@@ -4,6 +4,7 @@ namespace Mattoid\PluginScheduler\Command;
 
 use Flarum\Console\AbstractCommand;
 use Flarum\Extension\ExtensionManager;
+use Flarum\Settings\SettingsRepositoryInterface;
 use Mattoid\PluginScheduler\Model\ScheduleRule;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Input\InputInterface;
@@ -39,22 +40,30 @@ class ApplyScheduleRules extends AbstractCommand
 
     protected function fire()
     {
-        $now = new \DateTime('now');
+        // 规则时间是按设置时区解释的裸墙钟时间（管理端按本地时间选择直接存库），
+        // 而 PHP CLI/Flarum 运行时时区是 UTC，比较前必须把 now 转换到设置时区。
+        $tzName = resolve(SettingsRepositoryInterface::class)->get('mattoid-plugin-scheduler.timezone') ?: 'Asia/Shanghai';
+        $tz = new \DateTimeZone($tzName);
+        $now = new \DateTime('now', $tz);
         $nowTime = $now->format('H:i');
+        $nowDate = $now->format('Y-m-d');
 
         $rules = ScheduleRule::query()->get();
 
         $applied = 0;
         foreach ($rules as $rule) {
+            // shiftTimezone：把库里按设置时区解释的裸时间挂到该时区（不做换算）
+            $executeTime = $rule->execute_time->copy()->shiftTimezone($tz);
+
             $due = false;
 
             if ($rule->repeat_type === 'daily') {
-                $ruleTime = $rule->execute_time->format('H:i');
-                $executedToday = $rule->executed_at && $rule->executed_at->format('Y-m-d') === $now->format('Y-m-d');
-                $due = ($ruleTime === $nowTime) && !$executedToday;
+                $executedAt = $rule->executed_at ? $rule->executed_at->copy()->shiftTimezone($tz) : null;
+                $executedToday = $executedAt && $executedAt->format('Y-m-d') === $nowDate;
+                $due = ($executeTime->format('H:i') === $nowTime) && !$executedToday;
             } else {
                 // once：到达或超过设定时间即执行
-                $due = $rule->execute_time <= $now;
+                $due = $executeTime <= $now;
             }
 
             if (!$due) {

@@ -10,6 +10,7 @@ mattoid-plugin-scheduler:
     edit: 编辑
     add-rule: "+ 添加规则"
     save-rules: 保存
+    timezone: 执行时区
     no-rules: 暂无定时规则
     extension-search-placeholder: 输入插件名称或 ID 搜索
     no-extension-matched: 没有匹配的插件

@@ -35,4 +35,7 @@ return [
         ->schedule(ApplyScheduleRules::class, function ($event) {
             $event->everyMinute();
         }),
+
+    (new Extend\Settings())
+        ->default('mattoid-plugin-scheduler.timezone', 'Asia/Shanghai'),
 ];

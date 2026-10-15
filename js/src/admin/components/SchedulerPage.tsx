@@ -34,6 +34,17 @@ interface DraftRow {
 
 const SELF_ID = 'mattoid-plugin-scheduler';
 
+const TIMEZONE_OPTIONS = [
+  'Asia/Shanghai',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'UTC',
+  'Europe/London',
+  'Europe/Berlin',
+  'America/New_York',
+  'America/Los_Angeles',
+];
+
 function extensionTitle(ext: ExtensionInfo): string {
   return (ext.extra && ext.extra['flarum-extension'] && ext.extra['flarum-extension'].title) || ext.name || ext.id;
 }
@@ -186,6 +197,19 @@ export default class SchedulerPage extends ExtensionPage {
         this.saving = false;
         this.loadRules();
       });
+  }
+
+  timezone(): string {
+    const settings = app.data.settings as Record<string, string>;
+    return settings['mattoid-plugin-scheduler.timezone'] || 'Asia/Shanghai';
+  }
+
+  saveTimezone(value: string) {
+    app.request({
+      method: 'POST',
+      url: app.forum.attribute('apiUrl') + '/settings',
+      body: { 'mattoid-plugin-scheduler.timezone': value },
+    });
   }
 
   deleteRule(id: number) {
@@ -352,6 +376,16 @@ export default class SchedulerPage extends ExtensionPage {
                   {app.translator.trans('mattoid-plugin-scheduler.admin.save-rules')}
                 </Button>
               )}
+              <div className="PluginSchedulerTimezone">
+                <span className="PluginSchedulerTimezone-label">
+                  {app.translator.trans('mattoid-plugin-scheduler.admin.timezone')}
+                </span>
+                <Select
+                  value={this.timezone()}
+                  options={TIMEZONE_OPTIONS.reduce((acc, tz) => ({ ...acc, [tz]: tz }), {} as Record<string, string>)}
+                  onchange={(value: string) => this.saveTimezone(value)}
+                />
+              </div>
             </div>
           </div>
         </div>
