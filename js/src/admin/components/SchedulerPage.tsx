@@ -269,7 +269,6 @@ export default class SchedulerPage extends ExtensionPage {
                           }}
                         >
                           <span className="PluginSchedulerExtSelect-item-title">{title}</span>
-                          <span className="PluginSchedulerExtSelect-item-id">{id}</span>
                         </div>
                       ))}
                     </div>
