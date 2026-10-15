@@ -105,7 +105,46 @@ class ApplyScheduleRules extends AbstractCommand
             }
         }
 
+        if ($applied > 0) {
+            $this->clearFlarumCache();
+        }
+
         $this->info('Plugin scheduler: ' . $applied . ' rule(s) applied.');
+    }
+
+    /**
+     * 参照 Flarum core ClearCacheController：进程内直接运行
+     * cache:clear 与 assets:publish 命令对象（不 shell 执行 php flarum）。
+     * 非 0 退出码只记 error 日志，不中断规则处理。
+     */
+    private function clearFlarumCache()
+    {
+        /** @var LoggerInterface $logger */
+        $logger = resolve(LoggerInterface::class);
+
+        $failed = false;
+
+        $exitCode = resolve(\Flarum\Foundation\Console\CacheClearCommand::class)->run(
+            new \Symfony\Component\Console\Input\ArrayInput([]),
+            new \Symfony\Component\Console\Output\NullOutput()
+        );
+        if ($exitCode !== 0) {
+            $logger->error('[plugin-scheduler] cache:clear exited with code ' . $exitCode);
+            $failed = true;
+        }
+
+        $exitCode = resolve(\Flarum\Foundation\Console\AssetsPublishCommand::class)->run(
+            new \Symfony\Component\Console\Input\ArrayInput([]),
+            new \Symfony\Component\Console\Output\NullOutput()
+        );
+        if ($exitCode !== 0) {
+            $logger->error('[plugin-scheduler] assets:publish exited with code ' . $exitCode);
+            $failed = true;
+        }
+
+        if (!$failed) {
+            $this->info('Flarum cache cleared');
+        }
     }
 
     /**
