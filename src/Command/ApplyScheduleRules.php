@@ -50,6 +50,9 @@ class ApplyScheduleRules extends AbstractCommand
 
         $rules = ScheduleRule::query()->get();
 
+        /** @var ExtensionManager $extensions */
+        $extensions = resolve(ExtensionManager::class);
+
         $applied = 0;
         foreach ($rules as $rule) {
             // shiftTimezone：把库里按设置时区解释的裸时间挂到该时区（不做换算）
@@ -78,13 +81,10 @@ class ApplyScheduleRules extends AbstractCommand
             }
 
             try {
-                /** @var ExtensionManager $extensions */
-                $extensions = resolve(ExtensionManager::class);
-
                 if ($rule->action === 'enable') {
-                    $extensions->enable($extensionId);
+                    $this->enableCascade($extensions, $extensionId);
                 } else {
-                    $extensions->disable($extensionId);
+                    $this->disableCascade($extensions, $extensionId);
                 }
 
                 $this->info('Rule #' . $rule->id . ': ' . $rule->action . ' ' . $rule->extension);
@@ -106,6 +106,78 @@ class ApplyScheduleRules extends AbstractCommand
         }
 
         $this->info('Plugin scheduler: ' . $applied . ' rule(s) applied.');
+    }
+
+    /**
+     * 级联禁用：先深度收集所有「已启用且依赖 $id（含传递依赖）」的扩展并禁用，
+     * 再禁用 $id 本身。若级联列表包含本插件自身，整个规则中止。
+     */
+    protected function disableCascade(ExtensionManager $extensions, $id)
+    {
+        $cascade = [];
+        $visited = [$id => true];
+        $queue = [$id];
+
+        while ($queue) {
+            $current = array_shift($queue);
+            foreach ($extensions->getEnabledExtensions() as $ext) {
+                $extId = $ext->getId();
+                if (isset($visited[$extId])) {
+                    continue;
+                }
+                if (in_array($current, $ext->getExtensionDependencyIds(), true)) {
+                    $visited[$extId] = true;
+                    $cascade[] = $extId;
+                    $queue[] = $extId;
+                }
+            }
+        }
+
+        if (in_array(static::SELF_EXTENSION, $cascade, true)) {
+            $msg = 'Aborting disable of ' . $id . ': cascade would disable the scheduler extension itself.';
+            /** @var LoggerInterface $logger */
+            $logger = resolve(LoggerInterface::class);
+            $logger->warning('[plugin-scheduler] ' . $msg);
+            $this->error($msg);
+            throw new \RuntimeException($msg);
+        }
+
+        // 先禁用依赖方（级联），再禁用目标
+        foreach ($cascade as $extId) {
+            $extensions->disable($extId);
+            $this->info('disable ' . $extId . ' (dependency cascade)');
+        }
+        $extensions->disable($id);
+    }
+
+    /**
+     * 级联启用：递归先启用 $id 缺失的依赖，再启用 $id。
+     * 依赖未安装时记录错误并使规则失败；依赖链里的本插件自身直接跳过。
+     */
+    protected function enableCascade(ExtensionManager $extensions, $id, $chain = [])
+    {
+        if (isset($chain[$id])) {
+            throw new \RuntimeException('Circular dependency detected while enabling ' . $id);
+        }
+        $chain[$id] = true;
+
+        $extension = $extensions->getExtension($id);
+        if (!$extension) {
+            throw new \RuntimeException('Extension not installed: ' . $id);
+        }
+
+        foreach ($extension->getExtensionDependencyIds() as $depId) {
+            if ($depId === static::SELF_EXTENSION) {
+                continue;
+            }
+            if (!$extensions->isEnabled($depId)) {
+                $this->enableCascade($extensions, $depId, $chain);
+                $extensions->enable($depId);
+                $this->info('enable ' . $depId . ' (dependency cascade)');
+            }
+        }
+
+        $extensions->enable($id);
     }
 
     protected function info($message)
