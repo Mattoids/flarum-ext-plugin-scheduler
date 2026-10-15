@@ -8,6 +8,7 @@ use Illuminate\Support\Arr;
 use Mattoid\PluginScheduler\Command\ApplyScheduleRules;
 use Mattoid\PluginScheduler\Model\ScheduleRule;
 use Mattoid\PluginScheduler\Serializer\ScheduleRuleSerializer;
+use Mattoid\PluginScheduler\SettingsTargets;
 use Psr\Http\Message\ServerRequestInterface;
 use Tobscure\JsonApi\Document;
 
@@ -21,19 +22,12 @@ class SaveRuleController extends AbstractCreateController
 
         $attributes = Arr::get($request->getParsedBody(), 'data.attributes', []);
 
-        $extension = trim((string) Arr::get($attributes, 'extension', ''));
-        $action = Arr::get($attributes, 'action', '');
+        $ruleType = Arr::get($attributes, 'ruleType', 'extension');
         $repeatType = Arr::get($attributes, 'repeatType', 'once');
         $executeTime = Arr::get($attributes, 'executeTime', '');
 
-        if ($extension === '' || !in_array($action, ['enable', 'disable'], true) || !in_array($repeatType, ['once', 'daily'], true)) {
-            throw new ValidationException(['extension' => 'Invalid rule parameters']);
-        }
-
-        $extensionId = ApplyScheduleRules::toExtensionId($extension);
-
-        if ($extensionId === ApplyScheduleRules::SELF_EXTENSION) {
-            throw new ValidationException(['extension' => 'Cannot schedule the scheduler extension itself']);
+        if (!in_array($ruleType, ['extension', 'setting'], true) || !in_array($repeatType, ['once', 'daily', 'weekly', 'monthly', 'yearly'], true)) {
+            throw new ValidationException(['ruleType' => 'Invalid rule parameters']);
         }
 
         $time = \DateTime::createFromFormat('Y-m-d H:i', $executeTime);
@@ -46,12 +40,49 @@ class SaveRuleController extends AbstractCreateController
         }
 
         $rule = new ScheduleRule();
-        $rule->extension = $extension;
-        $rule->action = $action;
+        $rule->rule_type = $ruleType;
         $rule->repeat_type = $repeatType;
         $rule->execute_time = $time;
+
+        if ($ruleType === 'setting') {
+            $this->applySettingAttributes($rule, $attributes);
+        } else {
+            $extension = trim((string) Arr::get($attributes, 'extension', ''));
+            $action = Arr::get($attributes, 'action', '');
+
+            if ($extension === '' || !in_array($action, ['enable', 'disable'], true)) {
+                throw new ValidationException(['extension' => 'Invalid rule parameters']);
+            }
+
+            if (ApplyScheduleRules::toExtensionId($extension) === ApplyScheduleRules::SELF_EXTENSION) {
+                throw new ValidationException(['extension' => 'Cannot schedule the scheduler extension itself']);
+            }
+
+            $rule->extension = $extension;
+            $rule->action = $action;
+        }
+
         $rule->save();
 
         return $rule;
+    }
+
+    public static function applySettingAttributes(ScheduleRule $rule, array $attributes)
+    {
+        $action = Arr::get($attributes, 'action', '');
+        $settingKey = trim((string) Arr::get($attributes, 'settingKey', ''));
+
+        if (!in_array($action, ['set', 'reset'], true)) {
+            throw new ValidationException(['action' => 'Invalid action for setting rule, expected set/reset']);
+        }
+
+        if (!SettingsTargets::isValid($settingKey)) {
+            throw new ValidationException(['settingKey' => 'Unsupported setting key: ' . $settingKey]);
+        }
+
+        $rule->extension = '';
+        $rule->action = $action;
+        $rule->setting_key = $settingKey;
+        $rule->setting_value = $action === 'set' ? (string) Arr::get($attributes, 'settingValue', '') : null;
     }
 }

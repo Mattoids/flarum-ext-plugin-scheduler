@@ -6,6 +6,7 @@ use Flarum\Console\AbstractCommand;
 use Flarum\Extension\ExtensionManager;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Mattoid\PluginScheduler\Model\ScheduleRule;
+use Mattoid\PluginScheduler\SettingsTargets;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -60,10 +61,23 @@ class ApplyScheduleRules extends AbstractCommand
 
             $due = false;
 
+            $executedAt = $rule->executed_at ? $rule->executed_at->copy()->shiftTimezone($tz) : null;
+
             if ($rule->repeat_type === 'daily') {
-                $executedAt = $rule->executed_at ? $rule->executed_at->copy()->shiftTimezone($tz) : null;
                 $executedToday = $executedAt && $executedAt->format('Y-m-d') === $nowDate;
                 $due = ($executeTime->format('H:i') === $nowTime) && !$executedToday;
+            } elseif ($rule->repeat_type === 'weekly') {
+                // 每周：星期几 + 时刻相同，且本周未执行过
+                $executedThisWeek = $executedAt && $executedAt->format('oW') === $now->format('oW');
+                $due = ($executeTime->format('N') === $now->format('N')) && ($executeTime->format('H:i') === $nowTime) && !$executedThisWeek;
+            } elseif ($rule->repeat_type === 'monthly') {
+                // 每月：几号 + 时刻相同，且本月未执行过（31 号规则在短月不触发）
+                $executedThisMonth = $executedAt && $executedAt->format('Y-m') === $now->format('Y-m');
+                $due = ($executeTime->format('d') === $now->format('d')) && ($executeTime->format('H:i') === $nowTime) && !$executedThisMonth;
+            } elseif ($rule->repeat_type === 'yearly') {
+                // 每年：月-日 + 时刻相同，且今年未执行过（2-29 规则在平年不触发）
+                $executedThisYear = $executedAt && $executedAt->format('Y') === $now->format('Y');
+                $due = ($executeTime->format('m-d') === $now->format('m-d')) && ($executeTime->format('H:i') === $nowTime) && !$executedThisYear;
             } else {
                 // once：到达或超过设定时间即执行
                 $due = $executeTime <= $now;
@@ -73,21 +87,26 @@ class ApplyScheduleRules extends AbstractCommand
                 continue;
             }
 
-            $extensionId = static::toExtensionId($rule->extension);
-
-            if ($extensionId === static::SELF_EXTENSION) {
-                $this->info('Skipping rule #' . $rule->id . ': cannot schedule the scheduler extension itself.');
-                continue;
-            }
-
             try {
-                if ($rule->action === 'enable') {
-                    $this->enableCascade($extensions, $extensionId);
+                if ($rule->rule_type === 'setting') {
+                    $this->applySettingRule($rule);
+                    $this->info('Rule #' . $rule->id . ': ' . $rule->action . ' setting ' . $rule->setting_key);
                 } else {
-                    $this->disableCascade($extensions, $extensionId);
-                }
+                    $extensionId = static::toExtensionId($rule->extension);
 
-                $this->info('Rule #' . $rule->id . ': ' . $rule->action . ' ' . $rule->extension);
+                    if ($extensionId === static::SELF_EXTENSION) {
+                        $this->info('Skipping rule #' . $rule->id . ': cannot schedule the scheduler extension itself.');
+                        continue;
+                    }
+
+                    if ($rule->action === 'enable') {
+                        $this->enableCascade($extensions, $extensionId);
+                    } else {
+                        $this->disableCascade($extensions, $extensionId);
+                    }
+
+                    $this->info('Rule #' . $rule->id . ': ' . $rule->action . ' ' . $rule->extension);
+                }
 
                 if ($rule->repeat_type === 'once') {
                     $rule->delete();
@@ -110,6 +129,26 @@ class ApplyScheduleRules extends AbstractCommand
         }
 
         $this->info('Plugin scheduler: ' . $applied . ' rule(s) applied.');
+    }
+
+    /**
+     * 设置类规则：action=set 写入目标值，action=reset 删除设置项回落到 Flarum 默认。
+     * custom_less 等设置由 core 的 Saving 监听器做合法性校验，校验失败会抛异常使规则失败并记日志。
+     */
+    protected function applySettingRule(ScheduleRule $rule)
+    {
+        /** @var SettingsRepositoryInterface $settings */
+        $settings = resolve(SettingsRepositoryInterface::class);
+
+        if ($rule->action === 'reset') {
+            $settings->delete($rule->setting_key);
+        } else {
+            $value = $rule->setting_value;
+            if (SettingsTargets::typeOf($rule->setting_key) === 'bool') {
+                $value = in_array($value, ['1', 1, true, 'true', 'on'], true) ? '1' : '0';
+            }
+            $settings->set($rule->setting_key, $value);
+        }
     }
 
     /**

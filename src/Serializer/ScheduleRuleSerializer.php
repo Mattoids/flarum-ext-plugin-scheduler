@@ -16,11 +16,14 @@ class ScheduleRuleSerializer extends AbstractSerializer
         }
 
         return [
+            'ruleType' => $data->rule_type ?: 'extension',
             'extension' => $data->extension,
             'action' => $data->action,
             'repeatType' => $data->repeat_type,
             'executeTime' => $data->execute_time ? $data->execute_time->format('Y-m-d H:i') : null,
             'executedAt' => $data->executed_at ? $data->executed_at->format('Y-m-d H:i') : null,
+            'settingKey' => $data->setting_key,
+            'settingValue' => $data->setting_value,
         ];
     }
 }

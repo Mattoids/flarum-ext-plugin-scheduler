@@ -150,3 +150,52 @@
     min-width: 180px;
   }
 }
+
+.PluginSchedulerRow--draft {
+  flex-wrap: wrap;
+  padding: 10px;
+  background: rgba(128, 128, 128, 0.06);
+
+  &:hover {
+    background: rgba(128, 128, 128, 0.1);
+  }
+
+  .PluginSchedulerExtSelect {
+    flex: 1;
+    min-width: 220px;
+  }
+
+  .PluginSchedulerSettingValue {
+    flex: 1 1 100%;
+  }
+
+  textarea.PluginSchedulerSettingValue {
+    resize: vertical;
+    font-family: monospace;
+  }
+
+  .PluginSchedulerColor {
+    width: 60px;
+    height: 32px;
+    padding: 2px;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 4px;
+    background: transparent;
+  }
+}
+
+.PluginSchedulerImage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 100%;
+
+  &-preview {
+    max-height: 40px;
+    max-width: 120px;
+    padding: 4px;
+    background: #fff;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 4px;
+  }
+}

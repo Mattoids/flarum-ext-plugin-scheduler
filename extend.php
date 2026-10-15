@@ -16,6 +16,7 @@ use Mattoid\PluginScheduler\Controller\ListRuleController;
 use Mattoid\PluginScheduler\Controller\SaveRuleController;
 use Mattoid\PluginScheduler\Controller\ToggleExtensionController;
 use Mattoid\PluginScheduler\Controller\UpdateRuleController;
+use Mattoid\PluginScheduler\Controller\UploadSettingImageController;
 
 return [
     (new Extend\Frontend('admin'))
@@ -28,7 +29,8 @@ return [
         ->post('/plugin-scheduler/rules', 'plugin-scheduler.rules.save', SaveRuleController::class)
         ->put('/plugin-scheduler/rules/{id}', 'plugin-scheduler.rules.update', UpdateRuleController::class)
         ->delete('/plugin-scheduler/rules/{id}', 'plugin-scheduler.rules.delete', DeleteRuleController::class)
-        ->post('/plugin-scheduler/toggle', 'plugin-scheduler.toggle', ToggleExtensionController::class),
+        ->post('/plugin-scheduler/toggle', 'plugin-scheduler.toggle', ToggleExtensionController::class)
+        ->post('/plugin-scheduler/upload-image', 'plugin-scheduler.upload-image', UploadSettingImageController::class),
 
     (new Extend\Console())
         ->command(ApplyScheduleRules::class)
