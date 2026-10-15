@@ -7,6 +7,7 @@ mattoid-plugin-scheduler:
     repeat-once: 单次
     repeat-daily: 每天
     delete: 删除
+    edit: 编辑
     add-rule: "+ 添加规则"
     save-rules: 保存
     no-rules: 暂无定时规则

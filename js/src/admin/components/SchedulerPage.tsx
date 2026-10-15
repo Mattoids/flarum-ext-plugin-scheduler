@@ -23,6 +23,7 @@ interface Rule {
 }
 
 interface DraftRow {
+  editingRuleId: number | null;
   extension: string;
   action: string;
   repeatType: string;
@@ -97,11 +98,29 @@ export default class SchedulerPage extends ExtensionPage {
     const options = this.extensionOptions();
     const first = Object.keys(options)[0] || '';
     this.draftRows.push({
+      editingRuleId: null,
       extension: first,
       action: 'enable',
       repeatType: 'once',
       date: new Date().toISOString().slice(0, 10),
       time: '08:00',
+      text: '',
+    });
+  }
+
+  editRule(rule: Rule) {
+    // 同一规则同时只能有一条编辑草稿：先清空所有草稿
+    this.draftRows = [];
+    this.openDropdown = null;
+    const [date, time] = (rule.executeTime || '').split(' ');
+    this.draftRows.push({
+      editingRuleId: rule.id,
+      extension: rule.extension,
+      action: rule.action,
+      repeatType: rule.repeatType,
+      // daily 规则的日期部分仅作占位，保存时会被当天日期替换
+      date: rule.repeatType === 'daily' ? new Date().toISOString().slice(0, 10) : date || new Date().toISOString().slice(0, 10),
+      time: time || '08:00',
       text: '',
     });
   }
@@ -144,8 +163,8 @@ export default class SchedulerPage extends ExtensionPage {
           : row.date + ' ' + row.time;
 
       return app.request({
-        method: 'POST',
-        url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules',
+        method: row.editingRuleId ? 'PUT' : 'POST',
+        url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules' + (row.editingRuleId ? '/' + row.editingRuleId : ''),
         body: {
           data: {
             attributes: {
@@ -219,6 +238,9 @@ export default class SchedulerPage extends ExtensionPage {
                     {' / '}
                     {rule.executeTime}
                   </span>
+                  <Button className="Button" onclick={() => this.editRule(rule)}>
+                    {app.translator.trans('mattoid-plugin-scheduler.admin.edit')}
+                  </Button>
                   <Button className="Button Button--danger" onclick={() => this.deleteRule(rule.id)}>
                     {app.translator.trans('mattoid-plugin-scheduler.admin.delete')}
                   </Button>

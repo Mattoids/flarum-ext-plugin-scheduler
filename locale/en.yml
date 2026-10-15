@@ -7,6 +7,7 @@ mattoid-plugin-scheduler:
     repeat-once: Once
     repeat-daily: Daily
     delete: Delete
+    edit: Edit
     add-rule: "+ Add Rule"
     save-rules: Save
     no-rules: No scheduled rules yet

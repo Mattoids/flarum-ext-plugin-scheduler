@@ -15,6 +15,7 @@ use Mattoid\PluginScheduler\Controller\DeleteRuleController;
 use Mattoid\PluginScheduler\Controller\ListRuleController;
 use Mattoid\PluginScheduler\Controller\SaveRuleController;
 use Mattoid\PluginScheduler\Controller\ToggleExtensionController;
+use Mattoid\PluginScheduler\Controller\UpdateRuleController;
 
 return [
     (new Extend\Frontend('admin'))
@@ -25,6 +26,7 @@ return [
     (new Extend\Routes('api'))
         ->get('/plugin-scheduler/rules', 'plugin-scheduler.rules.list', ListRuleController::class)
         ->post('/plugin-scheduler/rules', 'plugin-scheduler.rules.save', SaveRuleController::class)
+        ->put('/plugin-scheduler/rules/{id}', 'plugin-scheduler.rules.update', UpdateRuleController::class)
         ->delete('/plugin-scheduler/rules/{id}', 'plugin-scheduler.rules.delete', DeleteRuleController::class)
         ->post('/plugin-scheduler/toggle', 'plugin-scheduler.toggle', ToggleExtensionController::class),
 
