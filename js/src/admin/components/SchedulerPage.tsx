@@ -300,8 +300,8 @@ export default class SchedulerPage extends ExtensionPage {
       .then(() => this.loadRules());
   }
 
-  // 设置类规则的值编辑器：文本类统一用大文本框，logo/站点图标用与 core 一致的上传模式，
-  // 颜色/布尔用各自的专用控件
+  // 设置类规则的值编辑器：标题类用单行 input，描述/页眉/页脚/LESS 用大文本框，
+  // logo/站点图标用与 core 一致的上传模式，颜色/布尔用各自的专用控件
   settingValueInput(row: DraftRow) {
     const target = SETTING_TARGETS[row.settingKey];
     const onchange = (value: string) => {
@@ -312,7 +312,18 @@ export default class SchedulerPage extends ExtensionPage {
       return this.settingImageInput(row);
     }
 
-    if (!target || target.type === 'text' || target.type === 'textarea') {
+    if (target && target.type === 'text') {
+      return (
+        <input
+          className="FormControl PluginSchedulerSettingValue"
+          value={row.settingValue}
+          placeholder={app.translator.trans('mattoid-plugin-scheduler.admin.setting-value-placeholder')}
+          oninput={(e: InputEvent) => onchange((e.target as HTMLInputElement).value)}
+        />
+      );
+    }
+
+    if (!target || target.type === 'textarea') {
       return (
         <textarea
           className="FormControl PluginSchedulerSettingValue"
