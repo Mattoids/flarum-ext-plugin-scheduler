@@ -1,0 +1,16 @@
+mattoid-plugin-scheduler:
+  admin:
+    nav-title: Plugin Scheduler
+    rules-title: Scheduled Rules
+    enable: Enable
+    disable: Disable
+    repeat-once: Once
+    repeat-daily: Daily
+    delete: Delete
+    add-rule: "+ Add Rule"
+    save-rules: Save
+    no-rules: No scheduled rules yet
+    extension-search-placeholder: Type extension title or ID to search
+    no-extension-matched: No matched extension
+    confirm-delete: Delete this rule?
+  forum:

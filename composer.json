@@ -1,0 +1,34 @@
+{
+    "name": "mattoid/flarum-ext-plugin-scheduler",
+    "keywords": [
+        "flarum"
+    ],
+    "type": "flarum-extension",
+    "license": "MIT-Wu",
+    "require": {
+        "flarum/core": "^1.2.0"
+    },
+    "authors": [
+        {
+            "name": "mattoid",
+            "email": "liufei@liufei.info",
+            "role": "Developer"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Mattoid\\PluginScheduler\\": "src/"
+        }
+    },
+    "extra": {
+        "flarum-extension": {
+            "title": "Plugin Scheduler",
+            "category": "admin",
+            "icon": {
+                "name": "fas fa-clock",
+                "color": "#fff",
+                "backgroundColor": "#4d698e"
+            }
+        }
+    }
+}

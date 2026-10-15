@@ -1,0 +1,18 @@
+/vendor
+composer.lock
+composer.phar
+
+.DS_Store
+Thumbs.db
+tests/.phpunit.result.cache
+/tests/integration/tmp
+.vagrant
+.idea/*
+.vscode
+js/coverage-ts
+js/package-lock.json
+
+package-lock.json
+
+# 运行时翻译缓存
+storage/

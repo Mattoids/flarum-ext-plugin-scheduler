@@ -1,0 +1,16 @@
+mattoid-plugin-scheduler:
+  admin:
+    nav-title: 插件计划管理
+    rules-title: 定时规则
+    enable: 开启
+    disable: 关闭
+    repeat-once: 单次
+    repeat-daily: 每天
+    delete: 删除
+    add-rule: "+ 添加规则"
+    save-rules: 保存
+    no-rules: 暂无定时规则
+    extension-search-placeholder: 输入插件名称或 ID 搜索
+    no-extension-matched: 没有匹配的插件
+    confirm-delete: 确定删除该规则吗？
+  forum:
