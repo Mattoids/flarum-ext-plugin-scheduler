@@ -9,6 +9,14 @@ mattoid-plugin-scheduler:
     repeat-weekly: 每周
     repeat-monthly: 每月
     repeat-yearly: 每年
+    weekday-mon: 周一
+    weekday-tue: 周二
+    weekday-wed: 周三
+    weekday-thu: 周四
+    weekday-fri: 周五
+    weekday-sat: 周六
+    weekday-sun: 周日
+    weekday-required: 请至少选择一个星期
     delete: 删除
     edit: 编辑
     add-rule: "+ 添加规则"

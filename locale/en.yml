@@ -9,6 +9,14 @@ mattoid-plugin-scheduler:
     repeat-weekly: Weekly
     repeat-monthly: Monthly
     repeat-yearly: Yearly
+    weekday-mon: Monday
+    weekday-tue: Tuesday
+    weekday-wed: Wednesday
+    weekday-thu: Thursday
+    weekday-fri: Friday
+    weekday-sat: Saturday
+    weekday-sun: Sunday
+    weekday-required: Please select at least one weekday
     delete: Delete
     edit: Edit
     add-rule: "+ Add Rule"

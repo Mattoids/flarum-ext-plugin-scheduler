@@ -120,6 +120,18 @@
   }
 }
 
+// 每周星期几单选下拉：与日期输入框同宽
+.PluginSchedulerWeekday,
+.PluginSchedulerDate {
+  width: 150px;
+  flex-shrink: 0;
+}
+
+// 下拉内部 select 跟随外层容器宽度
+.PluginSchedulerWeekday .Select-input {
+  width: 100%;
+}
+
 .PluginSchedulerEmpty {
   color: @muted-color;
   padding: 12px 0;

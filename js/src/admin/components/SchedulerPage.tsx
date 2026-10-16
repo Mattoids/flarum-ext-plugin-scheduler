@@ -38,12 +38,29 @@ interface DraftRow {
   repeatType: string;
   date: string;
   time: string;
+  weekday: number;
   text: string;
   settingKey: string;
   settingValue: string;
 }
 
 const SELF_ID = 'mattoid-plugin-scheduler';
+
+// 周一到周日（1-7，与 PHP date('N') 一致）
+const WEEKDAY_KEYS = ['weekday-mon', 'weekday-tue', 'weekday-wed', 'weekday-thu', 'weekday-fri', 'weekday-sat', 'weekday-sun'];
+
+// 下一次某个星期几（1-7）出现的日期（含今天），按本地日期格式化避免时区回退一天
+function nextWeekdayDate(weekday: number): string {
+  const now = new Date();
+  const diff = (weekday - (now.getDay() || 7) + 7) % 7;
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// 今天是星期几（1-7）
+function todayWeekday(): number {
+  return new Date().getDay() || 7;
+}
 
 const TIMEZONE_OPTIONS = [
   'Asia/Shanghai',
@@ -171,6 +188,7 @@ export default class SchedulerPage extends ExtensionPage {
       repeatType: 'once',
       date: new Date().toISOString().slice(0, 10),
       time: '08:00',
+      weekday: todayWeekday(),
       text: '',
       settingKey: 'welcome_title',
       settingValue: '',
@@ -182,13 +200,15 @@ export default class SchedulerPage extends ExtensionPage {
     this.draftRows = [];
     this.openDropdown = null;
     const [date, time] = (rule.executeTime || '').split(' ');
+    // weekly 规则的日期部分仅作占位，取其星期几作为多选回显
+    const weekday = date ? new Date(date + 'T00:00:00').getDay() || 7 : 0;
     this.draftRows.push({
       editingRuleId: rule.id,
       ruleType: rule.ruleType || 'extension',
       extension: rule.extension,
       action: rule.action,
       repeatType: rule.repeatType,
-      // daily/weekly 规则的日期部分仅作占位（weekly 用原日期里的星期几，daily 保存时会被当天日期替换）
+      // daily/weekly 规则的日期部分仅作占位（daily 保存时会被当天日期替换）
       date:
         rule.repeatType === 'daily' || rule.repeatType === 'weekly'
           ? rule.repeatType === 'daily'
@@ -196,6 +216,7 @@ export default class SchedulerPage extends ExtensionPage {
             : date || new Date().toISOString().slice(0, 10)
           : date || new Date().toISOString().slice(0, 10),
       time: time || '08:00',
+      weekday: rule.repeatType === 'weekly' && weekday ? weekday : todayWeekday(),
       text: '',
       settingKey: rule.settingKey || 'welcome_title',
       settingValue: rule.settingValue || '',
@@ -230,41 +251,78 @@ export default class SchedulerPage extends ExtensionPage {
     }, 200);
   }
 
+  // 组装某一行最终提交用的 executeTime 列表（每周可能展开成多条规则）
+  buildExecuteTimes(row: DraftRow): string[] | null {
+    if (row.repeatType === 'daily') {
+      return [new Date().toISOString().slice(0, 10) + ' ' + row.time];
+    }
+
+    if (row.repeatType === 'weekly') {
+      if (!row.weekday) {
+        alert(app.translator.trans('mattoid-plugin-scheduler.admin.weekday-required'));
+        return null;
+      }
+      // 日期归一化为该星期几最近一次出现的日期（后端只看星期几+时刻）
+      return [nextWeekdayDate(row.weekday) + ' ' + row.time];
+    }
+
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(row.date || '');
+    if (!m) {
+      return [row.date + ' ' + row.time];
+    }
+
+    if (row.repeatType === 'monthly') {
+      // 每月只取“日”：归一化为 2000-01-日，保证每月某日执行
+      return ['2000-01-' + m[3] + ' ' + row.time];
+    }
+
+    if (row.repeatType === 'yearly') {
+      // 每年只取“月-日”：归一化为 2000-月-日，保证每年某月某日执行
+      return ['2000-' + m[2] + '-' + m[3] + ' ' + row.time];
+    }
+
+    return [row.date + ' ' + row.time];
+  }
+
   saveRows() {
     this.saving = true;
 
-    const requests = this.draftRows.map((row) => {
-      const executeTime =
-        row.repeatType === 'daily'
-          ? new Date().toISOString().slice(0, 10) + ' ' + row.time
-          : row.date + ' ' + row.time;
+    const requests = [];
+    for (const row of this.draftRows) {
+      const executeTimes = this.buildExecuteTimes(row);
+      if (!executeTimes) {
+        this.saving = false;
+        return;
+      }
 
-      return app.request({
-        method: row.editingRuleId ? 'PUT' : 'POST',
-        url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules' + (row.editingRuleId ? '/' + row.editingRuleId : ''),
-        body: {
-          data: {
-            attributes:
-              row.ruleType === 'setting'
-                ? {
-                    ruleType: row.ruleType,
-                    action: row.action,
-                    repeatType: row.repeatType,
-                    executeTime: executeTime,
-                    settingKey: row.settingKey,
-                    settingValue: row.action === 'set' ? row.settingValue : '',
-                  }
-                : {
-                    ruleType: row.ruleType,
-                    extension: row.extension,
-                    action: row.action,
-                    repeatType: row.repeatType,
-                    executeTime: executeTime,
-                  },
+      requests.push(
+        app.request({
+          method: row.editingRuleId ? 'PUT' : 'POST',
+          url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules' + (row.editingRuleId ? '/' + row.editingRuleId : ''),
+          body: {
+            data: {
+              attributes:
+                row.ruleType === 'setting'
+                  ? {
+                      ruleType: row.ruleType,
+                      action: row.action,
+                      repeatType: row.repeatType,
+                      executeTime: executeTimes[0],
+                      settingKey: row.settingKey,
+                      settingValue: row.action === 'set' ? row.settingValue : '',
+                    }
+                  : {
+                      ruleType: row.ruleType,
+                      extension: row.extension,
+                      action: row.action,
+                      repeatType: row.repeatType,
+                      executeTime: executeTimes[0],
+                    },
+            },
           },
-        },
-      });
-    });
+        })
+      );
+    }
 
     Promise.all(requests)
       .then(() => {
@@ -422,8 +480,16 @@ export default class SchedulerPage extends ExtensionPage {
     );
   }
 
-  ruleName(rule: Rule, options: Record<string, string>): string {
-    if (rule.ruleType === 'setting') {
+  // 每周：星期几单选下拉框（1-7）
+  weekdayOptions(): Record<string, string> {
+    const options: Record<string, string> = {};
+    WEEKDAY_KEYS.forEach((key, i) => {
+      options[String(i + 1)] = app.translator.trans(`mattoid-plugin-scheduler.admin.${key}`);
+    });
+    return options;
+  }
+
+  ruleName(rule: Rule, options: Record<string, string>): string {    if (rule.ruleType === 'setting') {
       const keyLabel = app.translator.trans(`mattoid-plugin-scheduler.admin.setting-${rule.settingKey}`);
       const actionLabel =
         rule.action === 'reset'
@@ -574,9 +640,20 @@ export default class SchedulerPage extends ExtensionPage {
                     row.repeatType = value;
                   }}
                 />
+                {row.repeatType === 'weekly' && (
+                  <Select
+                    wrapperAttrs={{ className: 'PluginSchedulerWeekday' }}
+                    value={String(row.weekday || '')}
+                    options={this.weekdayOptions()}
+                    onchange={(value: string) => {
+                      row.weekday = parseInt(value, 10);
+                    }}
+                  />
+                )}
                 {(row.repeatType === 'once' || row.repeatType === 'monthly' || row.repeatType === 'yearly') && (
                   <input
                     type="date"
+                    class="PluginSchedulerDate"
                     value={row.date}
                     onchange={(e: InputEvent) => {
                       row.date = (e.target as HTMLInputElement).value;
