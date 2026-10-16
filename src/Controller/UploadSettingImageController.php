@@ -24,6 +24,11 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 class UploadSettingImageController implements RequestHandlerInterface
 {
+    /**
+     * 上传大小上限（字节），超过抛 422，避免超大图片打爆内存/磁盘。
+     */
+    const MAX_SIZE = 2097152; // 2 MB
+
     protected $uploadDir;
 
     protected $imageManager;
@@ -40,15 +45,24 @@ class UploadSettingImageController implements RequestHandlerInterface
 
         $key = (string) Arr::get($request->getQueryParams(), 'key', '');
         if (!in_array($key, ['logo_path', 'favicon_path'], true)) {
-            throw new ValidationException(['key' => 'Unsupported image setting key']);
+            throw new ValidationException(['key' => SaveRuleController::trans('unsupported_image_key')]);
         }
 
         $file = Arr::get($request->getUploadedFiles(), 'file');
         if (!$file instanceof UploadedFileInterface || $file->getError() !== UPLOAD_ERR_OK) {
-            throw new ValidationException(['file' => 'Invalid upload']);
+            throw new ValidationException(['file' => SaveRuleController::trans('invalid_upload')]);
         }
 
-        $image = $this->imageManager->make($file->getStream()->getMetadata('uri'));
+        if ($file->getSize() > static::MAX_SIZE) {
+            throw new ValidationException(['file' => SaveRuleController::trans('image_too_large')]);
+        }
+
+        try {
+            $image = $this->imageManager->make($file->getStream()->getMetadata('uri'));
+        } catch (\Throwable $e) {
+            // 非图片文件等解析失败转 422，不让 Intervention 的异常冒成 500
+            throw new ValidationException(['file' => SaveRuleController::trans('invalid_image')]);
+        }
 
         if ($key === 'logo_path') {
             $image = $image->heighten(60, function ($constraint) {

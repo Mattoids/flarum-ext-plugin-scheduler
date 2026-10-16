@@ -5,6 +5,7 @@ namespace Mattoid\PluginScheduler\Command;
 use Flarum\Console\AbstractCommand;
 use Flarum\Extension\ExtensionManager;
 use Flarum\Settings\SettingsRepositoryInterface;
+use Illuminate\Support\Carbon;
 use Mattoid\PluginScheduler\Model\ScheduleRule;
 use Mattoid\PluginScheduler\SettingsTargets;
 use Psr\Log\LoggerInterface;
@@ -44,8 +45,16 @@ class ApplyScheduleRules extends AbstractCommand
         // 规则时间是按设置时区解释的裸墙钟时间（管理端按本地时间选择直接存库），
         // 而 PHP CLI/Flarum 运行时时区是 UTC，比较前必须把 now 转换到设置时区。
         $tzName = resolve(SettingsRepositoryInterface::class)->get('mattoid-plugin-scheduler.timezone') ?: 'Asia/Shanghai';
-        $tz = new \DateTimeZone($tzName);
-        $now = new \DateTime('now', $tz);
+        try {
+            $tz = new \DateTimeZone($tzName);
+        } catch (\Throwable $e) {
+            // 非法时区不能让整轮调度崩溃，回退 UTC 并记日志
+            /** @var LoggerInterface $logger */
+            $logger = resolve(LoggerInterface::class);
+            $logger->warning('[plugin-scheduler] invalid timezone "' . $tzName . '", fallback to UTC: ' . $e->getMessage());
+            $tz = new \DateTimeZone('UTC');
+        }
+        $now = Carbon::now($tz);
         $nowTime = $now->format('H:i');
         $nowDate = $now->format('Y-m-d');
 
@@ -63,27 +72,35 @@ class ApplyScheduleRules extends AbstractCommand
 
             $executedAt = $rule->executed_at ? $rule->executed_at->copy()->shiftTimezone($tz) : null;
 
+            // 时刻比较一律用 <=：cron 每分钟跑一次，错过了设定分钟当周期内仍要补执行
             if ($rule->repeat_type === 'daily') {
                 $executedToday = $executedAt && $executedAt->format('Y-m-d') === $nowDate;
-                $due = ($executeTime->format('H:i') === $nowTime) && !$executedToday;
+                $due = ($executeTime->format('H:i') <= $nowTime) && !$executedToday;
             } elseif ($rule->repeat_type === 'weekly') {
-                // 每周：星期几 + 时刻相同，且本周未执行过
+                // 每周：星期几相同 + 时刻已到，且本周未执行过
                 $executedThisWeek = $executedAt && $executedAt->format('oW') === $now->format('oW');
-                $due = ($executeTime->format('N') === $now->format('N')) && ($executeTime->format('H:i') === $nowTime) && !$executedThisWeek;
+                $due = ($executeTime->format('N') === $now->format('N')) && ($executeTime->format('H:i') <= $nowTime) && !$executedThisWeek;
             } elseif ($rule->repeat_type === 'monthly') {
-                // 每月：几号 + 时刻相同，且本月未执行过（31 号规则在短月不触发）
+                // 每月：几号 + 时刻已到，且本月未执行过（31 号规则在短月不触发）
                 $executedThisMonth = $executedAt && $executedAt->format('Y-m') === $now->format('Y-m');
-                $due = ($executeTime->format('d') === $now->format('d')) && ($executeTime->format('H:i') === $nowTime) && !$executedThisMonth;
+                $due = ($executeTime->format('d') === $now->format('d')) && ($executeTime->format('H:i') <= $nowTime) && !$executedThisMonth;
             } elseif ($rule->repeat_type === 'yearly') {
-                // 每年：月-日 + 时刻相同，且今年未执行过（2-29 规则在平年不触发）
+                // 每年：月-日 + 时刻已到，且今年未执行过（2-29 规则在平年不触发）
                 $executedThisYear = $executedAt && $executedAt->format('Y') === $now->format('Y');
-                $due = ($executeTime->format('m-d') === $now->format('m-d')) && ($executeTime->format('H:i') === $nowTime) && !$executedThisYear;
+                $due = ($executeTime->format('m-d') === $now->format('m-d')) && ($executeTime->format('H:i') <= $nowTime) && !$executedThisYear;
             } else {
                 // once：到达或超过设定时间即执行
                 $due = $executeTime <= $now;
             }
 
             if (!$due) {
+                continue;
+            }
+
+            // 原子抢占：条件更新抢到执行权（affected rows = 1）的进程才真正执行，
+            // 并发多进程下同一周期只会执行一次
+            $previousExecutedAt = $rule->executed_at;
+            if (!$this->claim($rule, $now)) {
                 continue;
             }
 
@@ -110,13 +127,12 @@ class ApplyScheduleRules extends AbstractCommand
 
                 if ($rule->repeat_type === 'once') {
                     $rule->delete();
-                } else {
-                    $rule->executed_at = $now;
-                    $rule->save();
                 }
 
                 $applied++;
             } catch (\Throwable $e) {
+                // 执行失败则归还执行权，下一轮调度重新尝试（保持原失败可重试语义）
+                $this->releaseClaim($rule, $previousExecutedAt);
                 /** @var LoggerInterface $logger */
                 $logger = resolve(LoggerInterface::class);
                 $logger->error('[plugin-scheduler] rule #' . $rule->id . ' failed: ' . $e->getMessage());
@@ -129,6 +145,54 @@ class ApplyScheduleRules extends AbstractCommand
         }
 
         $this->info('Plugin scheduler: ' . $applied . ' rule(s) applied.');
+    }
+
+    /**
+     * 原子抢占执行权：条件 UPDATE 只在「本周期尚未执行」时写入 executed_at，
+     * 抢到（affected rows = 1）的进程才允许执行该规则。
+     */
+    private function claim(ScheduleRule $rule, Carbon $now)
+    {
+        $query = ScheduleRule::query()->where('id', $rule->id);
+
+        if ($rule->repeat_type === 'once') {
+            $query->whereNull('executed_at');
+        } else {
+            // 本周期起点（设置时区），换算回 UTC 与库中 executed_at 比较
+            $periodStart = $this->periodStart($rule, $now)->utc();
+            $query->where(function ($q) use ($periodStart) {
+                $q->whereNull('executed_at')->orWhere('executed_at', '<', $periodStart);
+            });
+        }
+
+        return $query->update(['executed_at' => Carbon::now('UTC')]) === 1;
+    }
+
+    /**
+     * 归还执行权：规则执行失败时恢复抢占前的 executed_at，便于下一轮重试。
+     */
+    private function releaseClaim(ScheduleRule $rule, $previousExecutedAt)
+    {
+        ScheduleRule::query()->where('id', $rule->id)->update(['executed_at' => $previousExecutedAt]);
+    }
+
+    /**
+     * 重复规则的周期起点（设置时区）：daily=当天 0 点，weekly=本周一（ISO），
+     * monthly=本月 1 号，yearly=今年 1 月 1 日。
+     */
+    private function periodStart(ScheduleRule $rule, Carbon $now)
+    {
+        $start = $now->copy()->startOfDay();
+
+        if ($rule->repeat_type === 'weekly') {
+            $start->startOfWeek();
+        } elseif ($rule->repeat_type === 'monthly') {
+            $start->startOfMonth();
+        } elseif ($rule->repeat_type === 'yearly') {
+            $start->startOfYear();
+        }
+
+        return $start;
     }
 
     /**

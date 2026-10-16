@@ -12,5 +12,5 @@ class ScheduleRule extends AbstractModel
 
     protected $attributes = ['rule_type' => 'extension'];
 
-    protected $dates = ['execute_time', 'executed_at'];
+    protected $casts = ['rule_value' => 'array', 'executed_at' => 'datetime', 'execute_time' => 'datetime'];
 }

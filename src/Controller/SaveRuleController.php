@@ -16,6 +16,34 @@ class SaveRuleController extends AbstractCreateController
 {
     public $serializer = ScheduleRuleSerializer::class;
 
+    /**
+     * 解析 executeTime（Y-m-d H:i 或前端 datetime-local 的 Y-m-d\TH:i），
+     * 用 getLastErrors() 拦截 2026-02-30 这类归一化日期，非法输入抛 422。
+     */
+    public static function parseExecuteTime($executeTime)
+    {
+        $executeTime = (string) $executeTime;
+
+        $time = \DateTime::createFromFormat('Y-m-d H:i', $executeTime);
+        if (!$time) {
+            $time = \DateTime::createFromFormat('Y-m-d\TH:i', $executeTime);
+        }
+
+        $errors = $time ? \DateTime::getLastErrors() : false;
+        $valid = $time && (!$errors || ($errors['warning_count'] === 0 && $errors['error_count'] === 0));
+
+        if (!$valid) {
+            throw new ValidationException(['executeTime' => self::trans('invalid_execute_time')]);
+        }
+
+        return $time;
+    }
+
+    public static function trans($key, $params = [])
+    {
+        return resolve(\Symfony\Contracts\Translation\TranslatorInterface::class)->trans('mattoid-plugin-scheduler.api.'.$key, $params);
+    }
+
     protected function data(ServerRequestInterface $request, Document $document)
     {
         $request->getAttribute('actor')->assertAdmin();
@@ -27,17 +55,10 @@ class SaveRuleController extends AbstractCreateController
         $executeTime = Arr::get($attributes, 'executeTime', '');
 
         if (!in_array($ruleType, ['extension', 'setting'], true) || !in_array($repeatType, ['once', 'daily', 'weekly', 'monthly', 'yearly'], true)) {
-            throw new ValidationException(['ruleType' => 'Invalid rule parameters']);
+            throw new ValidationException(['ruleType' => self::trans('invalid_rule_parameters')]);
         }
 
-        $time = \DateTime::createFromFormat('Y-m-d H:i', $executeTime);
-        if (!$time) {
-            $time = \DateTime::createFromFormat('Y-m-d\TH:i', $executeTime);
-        }
-
-        if (!$time) {
-            throw new ValidationException(['executeTime' => 'Invalid execute_time format, expected Y-m-d H:i']);
-        }
+        $time = self::parseExecuteTime($executeTime);
 
         $rule = new ScheduleRule();
         $rule->rule_type = $ruleType;
@@ -51,11 +72,11 @@ class SaveRuleController extends AbstractCreateController
             $action = Arr::get($attributes, 'action', '');
 
             if ($extension === '' || !in_array($action, ['enable', 'disable'], true)) {
-                throw new ValidationException(['extension' => 'Invalid rule parameters']);
+                throw new ValidationException(['extension' => self::trans('invalid_rule_parameters')]);
             }
 
             if (ApplyScheduleRules::toExtensionId($extension) === ApplyScheduleRules::SELF_EXTENSION) {
-                throw new ValidationException(['extension' => 'Cannot schedule the scheduler extension itself']);
+                throw new ValidationException(['extension' => self::trans('cannot_schedule_self')]);
             }
 
             $rule->extension = $extension;
@@ -73,11 +94,11 @@ class SaveRuleController extends AbstractCreateController
         $settingKey = trim((string) Arr::get($attributes, 'settingKey', ''));
 
         if (!in_array($action, ['set', 'reset'], true)) {
-            throw new ValidationException(['action' => 'Invalid action for setting rule, expected set/reset']);
+            throw new ValidationException(['action' => SaveRuleController::trans('invalid_action')]);
         }
 
         if (!SettingsTargets::isValid($settingKey)) {
-            throw new ValidationException(['settingKey' => 'Unsupported setting key: ' . $settingKey]);
+            throw new ValidationException(['settingKey' => SaveRuleController::trans('unsupported_setting_key').': '.$settingKey]);
         }
 
         $rule->extension = '';

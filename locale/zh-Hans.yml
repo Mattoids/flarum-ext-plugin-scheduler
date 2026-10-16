@@ -21,6 +21,7 @@ mattoid-plugin-scheduler:
     edit: 编辑
     add-rule: "+ 添加规则"
     save-rules: 保存
+    save-failed: 保存失败，请检查规则参数后重试
     timezone: 执行时区
     no-rules: 暂无定时规则
     extension-search-placeholder: 输入插件名称或 ID 搜索
@@ -53,4 +54,14 @@ mattoid-plugin-scheduler:
     setting-custom_header: 自定义页眉
     setting-custom_footer: 自定义页脚
     setting-custom_less: 自定义样式 (LESS)
+  api:
+    invalid_rule_parameters: 规则参数无效
+    invalid_execute_time: 执行时间无效，应为 Y-m-d H:i 格式
+    invalid_action: 设置规则的操作无效，应为 set/reset
+    unsupported_setting_key: 不支持的设置项
+    cannot_schedule_self: 不能对本插件自身创建定时规则
+    unsupported_image_key: 不支持的图片设置项
+    invalid_upload: 上传文件无效
+    image_too_large: 图片过大（最大 2 MB）
+    invalid_image: 上传的文件不是有效图片
   forum:

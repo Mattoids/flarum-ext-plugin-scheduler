@@ -57,6 +57,12 @@ function nextWeekdayDate(weekday: number): string {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+// 本地时区的 YYYY-MM-DD（toISOString 是 UTC 日期，时区偏东会回退一天）
+function localToday(): string {
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+}
+
 // 今天是星期几（1-7）
 function todayWeekday(): number {
   return new Date().getDay() || 7;
@@ -186,7 +192,7 @@ export default class SchedulerPage extends ExtensionPage {
       extension: first,
       action: 'enable',
       repeatType: 'once',
-      date: new Date().toISOString().slice(0, 10),
+      date: localToday(),
       time: '08:00',
       weekday: todayWeekday(),
       text: '',
@@ -212,9 +218,9 @@ export default class SchedulerPage extends ExtensionPage {
       date:
         rule.repeatType === 'daily' || rule.repeatType === 'weekly'
           ? rule.repeatType === 'daily'
-            ? new Date().toISOString().slice(0, 10)
-            : date || new Date().toISOString().slice(0, 10)
-          : date || new Date().toISOString().slice(0, 10),
+            ? localToday()
+            : date || localToday()
+          : date || localToday(),
       time: time || '08:00',
       weekday: rule.repeatType === 'weekly' && weekday ? weekday : todayWeekday(),
       text: '',
@@ -254,7 +260,7 @@ export default class SchedulerPage extends ExtensionPage {
   // 组装某一行最终提交用的 executeTime 列表（每周可能展开成多条规则）
   buildExecuteTimes(row: DraftRow): string[] | null {
     if (row.repeatType === 'daily') {
-      return [new Date().toISOString().slice(0, 10) + ' ' + row.time];
+      return [localToday() + ' ' + row.time];
     }
 
     if (row.repeatType === 'weekly') {
@@ -331,6 +337,12 @@ export default class SchedulerPage extends ExtensionPage {
       .then(() => {
         this.saving = false;
         this.loadRules();
+      })
+      .catch(() => {
+        // 保存失败（如 422 校验错误）要复位 saving，否则会永远卡在保存中
+        this.saving = false;
+        app.alerts.show({ type: 'error' }, app.translator.trans('mattoid-plugin-scheduler.admin.save-failed'));
+        m.redraw();
       });
   }
 
@@ -340,11 +352,17 @@ export default class SchedulerPage extends ExtensionPage {
   }
 
   saveTimezone(value: string) {
-    app.request({
-      method: 'POST',
-      url: app.forum.attribute('apiUrl') + '/settings',
-      body: { 'mattoid-plugin-scheduler.timezone': value },
-    });
+    app
+      .request({
+        method: 'POST',
+        url: app.forum.attribute('apiUrl') + '/settings',
+        body: { 'mattoid-plugin-scheduler.timezone': value },
+      })
+      .then(() => {
+        // 同步内存中的设置值，否则 Select 会在下次 redraw 时跳回保存前的旧值
+        app.data.settings['mattoid-plugin-scheduler.timezone'] = value;
+        m.redraw();
+      });
   }
 
   deleteRule(id: number) {

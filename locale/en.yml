@@ -21,6 +21,7 @@ mattoid-plugin-scheduler:
     edit: Edit
     add-rule: "+ Add Rule"
     save-rules: Save
+    save-failed: Save failed, please check the rule parameters and try again
     timezone: Execution timezone
     no-rules: No scheduled rules yet
     extension-search-placeholder: Type extension title or ID to search
@@ -53,4 +54,14 @@ mattoid-plugin-scheduler:
     setting-custom_header: Custom Header
     setting-custom_footer: Custom Footer
     setting-custom_less: Custom Styles (LESS)
+  api:
+    invalid_rule_parameters: Invalid rule parameters
+    invalid_execute_time: Invalid execute time, expected Y-m-d H:i
+    invalid_action: Invalid action for setting rule, expected set/reset
+    unsupported_setting_key: Unsupported setting key
+    cannot_schedule_self: Cannot schedule the scheduler extension itself
+    unsupported_image_key: Unsupported image setting key
+    invalid_upload: Invalid upload
+    image_too_large: Image is too large (max 2 MB)
+    invalid_image: Uploaded file is not a valid image
   forum:

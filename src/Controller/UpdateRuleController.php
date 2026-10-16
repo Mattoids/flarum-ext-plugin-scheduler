@@ -29,17 +29,10 @@ class UpdateRuleController extends AbstractCreateController
         $executeTime = Arr::get($attributes, 'executeTime', '');
 
         if (!in_array($ruleType, ['extension', 'setting'], true) || !in_array($repeatType, ['once', 'daily', 'weekly', 'monthly', 'yearly'], true)) {
-            throw new ValidationException(['ruleType' => 'Invalid rule parameters']);
+            throw new ValidationException(['ruleType' => SaveRuleController::trans('invalid_rule_parameters')]);
         }
 
-        $time = \DateTime::createFromFormat('Y-m-d H:i', $executeTime);
-        if (!$time) {
-            $time = \DateTime::createFromFormat('Y-m-d\TH:i', $executeTime);
-        }
-
-        if (!$time) {
-            throw new ValidationException(['executeTime' => 'Invalid execute_time format, expected Y-m-d H:i']);
-        }
+        $time = SaveRuleController::parseExecuteTime($executeTime);
 
         $rule->rule_type = $ruleType;
         $rule->repeat_type = $repeatType;
@@ -52,11 +45,11 @@ class UpdateRuleController extends AbstractCreateController
             $action = Arr::get($attributes, 'action', '');
 
             if ($extension === '' || !in_array($action, ['enable', 'disable'], true)) {
-                throw new ValidationException(['extension' => 'Invalid rule parameters']);
+                throw new ValidationException(['extension' => SaveRuleController::trans('invalid_rule_parameters')]);
             }
 
             if (ApplyScheduleRules::toExtensionId($extension) === ApplyScheduleRules::SELF_EXTENSION) {
-                throw new ValidationException(['extension' => 'Cannot schedule the scheduler extension itself']);
+                throw new ValidationException(['extension' => SaveRuleController::trans('cannot_schedule_self')]);
             }
 
             $rule->extension = $extension;
