@@ -34,6 +34,9 @@ mattoid-plugin-scheduler:
     bool-on: 开启
     bool-off: 关闭
     setting-value-placeholder: 目标值（留空表示清空）
+    rule-enable: 启用
+    rule-disable: 禁用
+    remark-placeholder: 备注（标识规则作用）
     image-upload: 上传图片
     image-change: 更换图片
     image-clear: 清除

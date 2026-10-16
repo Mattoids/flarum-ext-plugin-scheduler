@@ -24,6 +24,8 @@ class ScheduleRuleSerializer extends AbstractSerializer
             'executedAt' => $data->executed_at ? $data->executed_at->format('Y-m-d H:i') : null,
             'settingKey' => $data->setting_key,
             'settingValue' => $data->setting_value,
+            'remark' => $data->remark,
+            'isEnabled' => (bool) $data->is_enabled,
         ];
     }
 }

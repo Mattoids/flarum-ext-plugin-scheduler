@@ -58,7 +58,7 @@ class ApplyScheduleRules extends AbstractCommand
         $nowTime = $now->format('H:i');
         $nowDate = $now->format('Y-m-d');
 
-        $rules = ScheduleRule::query()->get();
+        $rules = ScheduleRule::query()->where('is_enabled', true)->get();
 
         /** @var ExtensionManager $extensions */
         $extensions = resolve(ExtensionManager::class);
@@ -126,7 +126,9 @@ class ApplyScheduleRules extends AbstractCommand
                 }
 
                 if ($rule->repeat_type === 'once') {
-                    $rule->delete();
+                    // 一次性规则执行后自动禁用，保留记录便于查看历史与备注
+                    $rule->is_enabled = false;
+                    $rule->save();
                 }
 
                 $applied++;

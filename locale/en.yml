@@ -34,6 +34,9 @@ mattoid-plugin-scheduler:
     bool-on: "On"
     bool-off: "Off"
     setting-value-placeholder: Target value (leave empty to clear)
+    rule-enable: Enable
+    rule-disable: Disable
+    remark-placeholder: Remark (describe this rule)
     image-upload: Upload Image
     image-change: Change Image
     image-clear: Clear

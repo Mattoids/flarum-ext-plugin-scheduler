@@ -37,6 +37,10 @@ class UpdateRuleController extends AbstractCreateController
         $rule->rule_type = $ruleType;
         $rule->repeat_type = $repeatType;
         $rule->execute_time = $time;
+        $rule->remark = mb_substr(trim((string) Arr::get($attributes, 'remark', '')), 0, 190) ?: null;
+        if (Arr::has($attributes, 'isEnabled')) {
+            $rule->is_enabled = $attributes['isEnabled'] ? true : false;
+        }
 
         if ($ruleType === 'setting') {
             SaveRuleController::applySettingAttributes($rule, $attributes);

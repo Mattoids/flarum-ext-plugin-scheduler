@@ -23,6 +23,8 @@ interface Rule {
   executeTime: string;
   settingKey: string;
   settingValue: string;
+  remark: string;
+  isEnabled: boolean;
 }
 
 interface SettingTarget {
@@ -42,6 +44,7 @@ interface DraftRow {
   text: string;
   settingKey: string;
   settingValue: string;
+  remark: string;
 }
 
 const SELF_ID = 'mattoid-plugin-scheduler';
@@ -172,6 +175,8 @@ export default class SchedulerPage extends ExtensionPage {
           executeTime: item.attributes.executeTime,
           settingKey: item.attributes.settingKey || '',
           settingValue: item.attributes.settingValue || '',
+          remark: item.attributes.remark || '',
+          isEnabled: item.attributes.isEnabled !== false,
         }));
       })
       .catch(() => {
@@ -198,6 +203,7 @@ export default class SchedulerPage extends ExtensionPage {
       text: '',
       settingKey: 'welcome_title',
       settingValue: '',
+      remark: '',
     });
   }
 
@@ -226,6 +232,7 @@ export default class SchedulerPage extends ExtensionPage {
       text: '',
       settingKey: rule.settingKey || 'welcome_title',
       settingValue: rule.settingValue || '',
+      remark: rule.remark || '',
     });
   }
 
@@ -316,6 +323,7 @@ export default class SchedulerPage extends ExtensionPage {
                       executeTime: executeTimes[0],
                       settingKey: row.settingKey,
                       settingValue: row.action === 'set' ? row.settingValue : '',
+                      remark: row.remark,
                     }
                   : {
                       ruleType: row.ruleType,
@@ -323,6 +331,7 @@ export default class SchedulerPage extends ExtensionPage {
                       action: row.action,
                       repeatType: row.repeatType,
                       executeTime: executeTimes[0],
+                      remark: row.remark,
                     },
             },
           },
@@ -372,6 +381,41 @@ export default class SchedulerPage extends ExtensionPage {
       .request({
         method: 'DELETE',
         url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules/' + id,
+      })
+      .then(() => this.loadRules());
+  }
+
+  // 列表上的启用/禁用开关：PUT 回完整属性，编辑场景外的纯状态切换
+  toggleRule(rule: Rule) {
+    app
+      .request({
+        method: 'PUT',
+        url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules/' + rule.id,
+        body: {
+          data: {
+            attributes:
+              rule.ruleType === 'setting'
+                ? {
+                    ruleType: rule.ruleType,
+                    action: rule.action,
+                    repeatType: rule.repeatType,
+                    executeTime: rule.executeTime,
+                    settingKey: rule.settingKey,
+                    settingValue: rule.action === 'set' ? rule.settingValue : '',
+                    remark: rule.remark,
+                    isEnabled: !rule.isEnabled,
+                  }
+                : {
+                    ruleType: rule.ruleType,
+                    extension: rule.extension,
+                    action: rule.action,
+                    repeatType: rule.repeatType,
+                    executeTime: rule.executeTime,
+                    remark: rule.remark,
+                    isEnabled: !rule.isEnabled,
+                  },
+          },
+        },
       })
       .then(() => this.loadRules());
   }
@@ -544,13 +588,18 @@ export default class SchedulerPage extends ExtensionPage {
 
             {!this.loadingRules &&
               this.rules.map((rule) => (
-                <div className="PluginSchedulerRow" key={rule.id}>
-                  <span className="PluginSchedulerRow-name">{this.ruleName(rule, options)}</span>
+                <div className={'PluginSchedulerRow' + (rule.isEnabled ? '' : ' PluginSchedulerRow--disabled')} key={rule.id}>
+                  <span className="PluginSchedulerRow-name">
+                    {rule.remark ? rule.remark + '（' + this.ruleName(rule, options) + '）' : this.ruleName(rule, options)}
+                  </span>
                   <span className="PluginSchedulerRow-meta">
                     {app.translator.trans(`mattoid-plugin-scheduler.admin.repeat-${rule.repeatType}`)}
                     {' / '}
                     {rule.executeTime}
                   </span>
+                  <Button className="Button" onclick={() => this.toggleRule(rule)}>
+                    {app.translator.trans(rule.isEnabled ? 'mattoid-plugin-scheduler.admin.rule-disable' : 'mattoid-plugin-scheduler.admin.rule-enable')}
+                  </Button>
                   <Button className="Button" onclick={() => this.editRule(rule)}>
                     {app.translator.trans('mattoid-plugin-scheduler.admin.edit')}
                   </Button>
@@ -683,6 +732,14 @@ export default class SchedulerPage extends ExtensionPage {
                   value={row.time}
                   onchange={(e: InputEvent) => {
                     row.time = (e.target as HTMLInputElement).value;
+                  }}
+                />
+                <input
+                  className="FormControl PluginSchedulerRemark"
+                  value={row.remark}
+                  placeholder={app.translator.trans('mattoid-plugin-scheduler.admin.remark-placeholder')}
+                  oninput={(e: InputEvent) => {
+                    row.remark = (e.target as HTMLInputElement).value;
                   }}
                 />
                 <Button
