@@ -718,6 +718,14 @@ export default class SchedulerPage extends ExtensionPage {
                     row.ruleType = value;
                     row.action = value === 'extension' ? 'enable' : 'set';
                     row.text = '';
+                    // 扩展设置不预置插件，避免未选择时直接落入排序第一的扩展
+                    if (value === 'ext-setting') {
+                      row.extension = '';
+                      row.settingValues = {};
+                      row.settingOriginals = {};
+                    } else if (value === 'extension' && !row.extension) {
+                      row.extension = Object.keys(this.extensionOptions())[0] || '';
+                    }
                     this.openDropdown = null;
                   }}
                 />
