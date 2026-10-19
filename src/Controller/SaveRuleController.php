@@ -54,7 +54,7 @@ class SaveRuleController extends AbstractCreateController
         $repeatType = Arr::get($attributes, 'repeatType', 'once');
         $executeTime = Arr::get($attributes, 'executeTime', '');
 
-        if (!in_array($ruleType, ['extension', 'setting'], true) || !in_array($repeatType, ['once', 'daily', 'weekly', 'monthly', 'yearly'], true)) {
+        if (!in_array($ruleType, ['extension', 'setting', 'ext-setting'], true) || !in_array($repeatType, ['once', 'daily', 'weekly', 'monthly', 'yearly'], true)) {
             throw new ValidationException(['ruleType' => self::trans('invalid_rule_parameters')]);
         }
 
@@ -69,6 +69,8 @@ class SaveRuleController extends AbstractCreateController
 
         if ($ruleType === 'setting') {
             $this->applySettingAttributes($rule, $attributes);
+        } elseif ($ruleType === 'ext-setting') {
+            $this->applyExtSettingAttributes($rule, $attributes);
         } else {
             $extension = trim((string) Arr::get($attributes, 'extension', ''));
             $action = Arr::get($attributes, 'action', '');
@@ -99,7 +101,7 @@ class SaveRuleController extends AbstractCreateController
             throw new ValidationException(['action' => SaveRuleController::trans('invalid_action')]);
         }
 
-        if (!SettingsTargets::isValid($settingKey)) {
+        if (!SettingsTargets::isValid($settingKey) && !SettingsTargets::isExtensionKey($settingKey)) {
             throw new ValidationException(['settingKey' => SaveRuleController::trans('unsupported_setting_key').': '.$settingKey]);
         }
 
@@ -107,5 +109,46 @@ class SaveRuleController extends AbstractCreateController
         $rule->action = $action;
         $rule->setting_key = $settingKey;
         $rule->setting_value = $action === 'set' ? (string) Arr::get($attributes, 'settingValue', '') : null;
+    }
+
+    /**
+     * 扩展设置规则：extension 列存扩展 ID，settings_map 存「被修改的键 => 目标值」，
+     * settings_original 存「键 => 保存规则时的原始值」（null 表示原本不存在）。
+     * set=定时写入目标值；reset=定时恢复保存时记录的原始值（原本不存在的键则删除）。
+     */
+    public static function applyExtSettingAttributes(ScheduleRule $rule, array $attributes)
+    {
+        $extension = trim((string) Arr::get($attributes, 'extension', ''));
+        $action = Arr::get($attributes, 'action', '');
+
+        if ($extension === '' || !in_array($action, ['set', 'reset'], true)) {
+            throw new ValidationException(['extension' => SaveRuleController::trans('invalid_rule_parameters')]);
+        }
+
+        if (ApplyScheduleRules::toExtensionId($extension) === ApplyScheduleRules::SELF_EXTENSION) {
+            throw new ValidationException(['extension' => SaveRuleController::trans('cannot_schedule_self')]);
+        }
+
+        $map = Arr::get($attributes, 'settingsMap', []);
+        $original = Arr::get($attributes, 'settingsOriginal', []);
+
+        if (!is_array($map) || !$map) {
+            throw new ValidationException(['settingsMap' => SaveRuleController::trans('empty_settings_map')]);
+        }
+
+        // 键必须是「该扩展 ID.」前缀的扩展设置键
+        $prefix = ApplyScheduleRules::toExtensionId($extension).'.';
+        foreach ($map as $key => $value) {
+            if (!SettingsTargets::isExtensionKey($key) || strpos($key, $prefix) !== 0) {
+                throw new ValidationException(['settingsMap' => SaveRuleController::trans('unsupported_setting_key').': '.$key]);
+            }
+        }
+
+        $rule->extension = $extension;
+        $rule->action = $action;
+        $rule->setting_key = null;
+        $rule->setting_value = null;
+        $rule->settings_map = $map;
+        $rule->settings_original = is_array($original) ? $original : [];
     }
 }

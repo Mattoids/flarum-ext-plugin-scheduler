@@ -147,6 +147,39 @@
   text-align: center;
 }
 
+.PluginSchedulerHint {
+  color: @muted-color;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+// 扩展设置规则：该扩展自己注册的后台设置表单，独占草稿行一整行
+.PluginSchedulerExtSettings {
+  flex: 1 1 100%;
+
+  .Form-group {
+    margin-bottom: 10px;
+  }
+
+  // 行内编辑模式：整行卡片式布局，与上方配置按钮区分开
+  &--editor {
+    flex: 1 1 100%;
+    padding: 14px;
+    margin-top: 4px;
+    background: @body-bg;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 8px;
+  }
+
+  &-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(128, 128, 128, 0.15);
+  }
+}
+
 .PluginSchedulerActions {
   display: flex;
   gap: 8px;

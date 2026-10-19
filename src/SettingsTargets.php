@@ -39,6 +39,15 @@ class SettingsTargets
         return isset(self::TARGETS[$key]);
     }
 
+    /**
+     * 扩展设置键：形如「扩展ID.键名」（如 mattoid-store.goods-title），
+     * 扩展 ID 为小写字母/数字/连字符，键名允许点号。以此旁路放开白名单之外的键。
+     */
+    public static function isExtensionKey($key)
+    {
+        return is_string($key) && preg_match('/^[a-z0-9-]+\.[a-z0-9_.-]+$/', $key) === 1;
+    }
+
     public static function typeOf($key)
     {
         return self::isValid($key) ? self::TARGETS[$key]['type'] : 'text';

@@ -108,6 +108,9 @@ class ApplyScheduleRules extends AbstractCommand
                 if ($rule->rule_type === 'setting') {
                     $this->applySettingRule($rule);
                     $this->info('Rule #' . $rule->id . ': ' . $rule->action . ' setting ' . $rule->setting_key);
+                } elseif ($rule->rule_type === 'ext-setting') {
+                    $this->applyExtSettingRule($rule);
+                    $this->info('Rule #' . $rule->id . ': ' . $rule->action . ' ' . count((array) $rule->settings_map) . ' setting(s) of ' . $rule->extension);
                 } else {
                     $extensionId = static::toExtensionId($rule->extension);
 
@@ -214,6 +217,37 @@ class ApplyScheduleRules extends AbstractCommand
                 $value = in_array($value, ['1', 1, true, 'true', 'on'], true) ? '1' : '0';
             }
             $settings->set($rule->setting_key, $value);
+        }
+    }
+
+    /**
+     * 扩展设置规则：settings_map 为「键 => 目标值」。
+     * set=定时写入目标值；reset=恢复保存规则时记录的原始值（settings_original 中
+     * 不存在或为 null 的键直接删除，回落到扩展默认值）。
+     */
+    protected function applyExtSettingRule(ScheduleRule $rule)
+    {
+        /** @var SettingsRepositoryInterface $settings */
+        $settings = resolve(SettingsRepositoryInterface::class);
+
+        $map = (array) $rule->settings_map;
+
+        if ($rule->action === 'reset') {
+            $original = (array) $rule->settings_original;
+            foreach ($map as $key => $value) {
+                if (array_key_exists($key, $original) && $original[$key] !== null) {
+                    $settings->set($key, (string) $original[$key]);
+                } else {
+                    $settings->delete($key);
+                }
+            }
+        } else {
+            foreach ($map as $key => $value) {
+                if (is_bool($value)) {
+                    $value = $value ? '1' : '0';
+                }
+                $settings->set($key, (string) $value);
+            }
         }
     }
 

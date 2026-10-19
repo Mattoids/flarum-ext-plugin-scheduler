@@ -29,6 +29,12 @@ mattoid-plugin-scheduler:
     confirm-delete: Delete this rule?
     rule-type-extension: Extension
     rule-type-setting: Site Setting
+    rule-type-ext-setting: Extension Settings
+    configure-extension: Configure Extension
+    ext-settings-save: Save Settings
+    ext-settings-collapse: Collapse
+    ext-setting-select-first: Select an extension first, its registered settings will show here
+    ext-setting-no-changes: An extension settings rule needs at least one modified setting
     action-set: Set to
     action-reset: Reset to default
     bool-on: "On"
@@ -61,6 +67,7 @@ mattoid-plugin-scheduler:
     invalid_rule_parameters: Invalid rule parameters
     invalid_execute_time: Invalid execute time, expected Y-m-d H:i
     invalid_action: Invalid action for setting rule, expected set/reset
+    empty_settings_map: An extension settings rule needs at least one modified setting
     unsupported_setting_key: Unsupported setting key
     cannot_schedule_self: Cannot schedule the scheduler extension itself
     unsupported_image_key: Unsupported image setting key

@@ -3,6 +3,8 @@ import ExtensionPage from 'flarum/admin/components/ExtensionPage';
 import Button from 'flarum/common/components/Button';
 import Select from 'flarum/common/components/Select';
 import Mithril from 'mithril';
+import ExtensionSettingsForm from './ExtensionSettingsForm';
+import ExtensionSettingsEditor from './ExtensionSettingsEditor';
 
 interface ExtensionInfo {
   id: string;
@@ -23,6 +25,8 @@ interface Rule {
   executeTime: string;
   settingKey: string;
   settingValue: string;
+  settingsMap: Record<string, string>;
+  settingsOriginal: Record<string, string | null>;
   remark: string;
   isEnabled: boolean;
 }
@@ -44,6 +48,9 @@ interface DraftRow {
   text: string;
   settingKey: string;
   settingValue: string;
+  // ext-setting：被修改的键值对与保存时记录的原始值（由 ExtensionSettingsForm 回调写入）
+  settingValues: Record<string, string>;
+  settingOriginals: Record<string, string | null>;
   remark: string;
 }
 
@@ -110,6 +117,8 @@ export default class SchedulerPage extends ExtensionPage {
   private loadingRules: boolean = true;
   private openDropdown: number | null = null;
   private uploadingImage: boolean = false;
+  // 正在行内编辑设置的扩展 id（null = 收起），不再跳转到扩展自己的设置页
+  private configuringExt: string | null = null;
 
   oninit(vnode: Mithril.Vnode) {
     super.oninit(vnode);
@@ -144,8 +153,29 @@ export default class SchedulerPage extends ExtensionPage {
     return options;
   }
 
+  // app.data.settings 里以「扩展ID.」开头的设置键（即该扩展的自有配置项）
+  extensionSettingKeys(extId: string): string[] {
+    if (!extId) {
+      return [];
+    }
+    const prefix = extId + '.';
+    return Object.keys(app.data.settings).filter((key) => key.indexOf(prefix) === 0);
+  }
+
+  // 只列出注册了后台设置项的扩展（即 /admin#/extension/<id> 页有设置表单的）
+  settingExtensionOptions(): Record<string, string> {
+    const options: Record<string, string> = {};
+    this.installedExtensions().forEach((ext) => {
+      const settings = app.extensionData.getSettings(ext.id);
+      if (settings && settings.length > 0) {
+        options[ext.id] = extensionTitle(ext);
+      }
+    });
+    return options;
+  }
+
   actionOptions(row: DraftRow): Record<string, string> {
-    if (row.ruleType === 'setting') {
+    if (row.ruleType === 'setting' || row.ruleType === 'ext-setting') {
       return {
         set: app.translator.trans('mattoid-plugin-scheduler.admin.action-set'),
         reset: app.translator.trans('mattoid-plugin-scheduler.admin.action-reset'),
@@ -175,6 +205,8 @@ export default class SchedulerPage extends ExtensionPage {
           executeTime: item.attributes.executeTime,
           settingKey: item.attributes.settingKey || '',
           settingValue: item.attributes.settingValue || '',
+          settingsMap: item.attributes.settingsMap || {},
+          settingsOriginal: item.attributes.settingsOriginal || {},
           remark: item.attributes.remark || '',
           isEnabled: item.attributes.isEnabled !== false,
         }));
@@ -203,6 +235,8 @@ export default class SchedulerPage extends ExtensionPage {
       text: '',
       settingKey: 'welcome_title',
       settingValue: '',
+      settingValues: {},
+      settingOriginals: {},
       remark: '',
     });
   }
@@ -232,12 +266,19 @@ export default class SchedulerPage extends ExtensionPage {
       text: '',
       settingKey: rule.settingKey || 'welcome_title',
       settingValue: rule.settingValue || '',
+      settingValues: rule.settingsMap || {},
+      settingOriginals: rule.settingsOriginal || {},
       remark: rule.remark || '',
     });
   }
 
+  // 该行扩展下拉的数据源：ext-setting 只列出注册了设置项的扩展
+  rowExtensionOptions(row: DraftRow): Record<string, string> {
+    return row.ruleType === 'ext-setting' ? this.settingExtensionOptions() : this.extensionOptions();
+  }
+
   filteredExtensionOptions(row: DraftRow): [string, string][] {
-    const options = this.extensionOptions();
+    const options = this.rowExtensionOptions(row);
     const keyword = (row.text || '').trim().toLowerCase();
     const entries = Object.keys(options).map((id) => [id, options[id]] as [string, string]);
     if (!keyword) {
@@ -248,7 +289,7 @@ export default class SchedulerPage extends ExtensionPage {
 
   openExtDropdown(index: number) {
     const row = this.draftRows[index];
-    const options = this.extensionOptions();
+    const options = this.rowExtensionOptions(row);
     // 已选插件有效时清空过滤文本，展开即显示全部列表；
     // 无效（手输内容）时保留原文本便于继续编辑
     row.text = options[row.extension] ? '' : row.extension;
@@ -297,6 +338,48 @@ export default class SchedulerPage extends ExtensionPage {
     return [row.date + ' ' + row.time];
   }
 
+  // 组装某一行提交的 attributes
+  buildAttributes(row: DraftRow, executeTime: string): Record<string, any> | null {
+    const base = {
+      ruleType: row.ruleType,
+      action: row.action,
+      repeatType: row.repeatType,
+      executeTime,
+      remark: row.remark,
+    };
+
+    if (row.ruleType === 'setting') {
+      return {
+        ...base,
+        settingKey: row.settingKey,
+        settingValue: row.action === 'set' ? row.settingValue : '',
+      };
+    }
+
+    if (row.ruleType === 'ext-setting') {
+      // 至少需要一项被修改的配置
+      if (!row.settingValues || Object.keys(row.settingValues).length === 0) {
+        alert(app.translator.trans('mattoid-plugin-scheduler.admin.ext-setting-no-changes'));
+        return null;
+      }
+      return {
+        ...base,
+        extension: row.extension,
+        settingsMap: row.settingValues,
+        settingsOriginal: row.settingOriginals || {},
+      };
+    }
+
+    return {
+      ruleType: row.ruleType,
+      extension: row.extension,
+      action: row.action,
+      repeatType: row.repeatType,
+      executeTime,
+      remark: row.remark,
+    };
+  }
+
   saveRows() {
     this.saving = true;
 
@@ -308,31 +391,19 @@ export default class SchedulerPage extends ExtensionPage {
         return;
       }
 
+      const attributes = this.buildAttributes(row, executeTimes[0]);
+      if (!attributes) {
+        this.saving = false;
+        return;
+      }
+
       requests.push(
         app.request({
           method: row.editingRuleId ? 'PUT' : 'POST',
           url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules' + (row.editingRuleId ? '/' + row.editingRuleId : ''),
           body: {
             data: {
-              attributes:
-                row.ruleType === 'setting'
-                  ? {
-                      ruleType: row.ruleType,
-                      action: row.action,
-                      repeatType: row.repeatType,
-                      executeTime: executeTimes[0],
-                      settingKey: row.settingKey,
-                      settingValue: row.action === 'set' ? row.settingValue : '',
-                      remark: row.remark,
-                    }
-                  : {
-                      ruleType: row.ruleType,
-                      extension: row.extension,
-                      action: row.action,
-                      repeatType: row.repeatType,
-                      executeTime: executeTimes[0],
-                      remark: row.remark,
-                    },
+              attributes,
             },
           },
         })
@@ -387,33 +458,47 @@ export default class SchedulerPage extends ExtensionPage {
 
   // 列表上的启用/禁用开关：PUT 回完整属性，编辑场景外的纯状态切换
   toggleRule(rule: Rule) {
+    const attributes: Record<string, any> =
+      rule.ruleType === 'setting'
+        ? {
+            ruleType: rule.ruleType,
+            action: rule.action,
+            repeatType: rule.repeatType,
+            executeTime: rule.executeTime,
+            settingKey: rule.settingKey,
+            settingValue: rule.action === 'set' ? rule.settingValue : '',
+            remark: rule.remark,
+            isEnabled: !rule.isEnabled,
+          }
+        : rule.ruleType === 'ext-setting'
+        ? {
+            ruleType: rule.ruleType,
+            extension: rule.extension,
+            action: rule.action,
+            repeatType: rule.repeatType,
+            executeTime: rule.executeTime,
+            settingsMap: rule.settingsMap,
+            settingsOriginal: rule.settingsOriginal,
+            remark: rule.remark,
+            isEnabled: !rule.isEnabled,
+          }
+        : {
+            ruleType: rule.ruleType,
+            extension: rule.extension,
+            action: rule.action,
+            repeatType: rule.repeatType,
+            executeTime: rule.executeTime,
+            remark: rule.remark,
+            isEnabled: !rule.isEnabled,
+          };
+
     app
       .request({
         method: 'PUT',
         url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules/' + rule.id,
         body: {
           data: {
-            attributes:
-              rule.ruleType === 'setting'
-                ? {
-                    ruleType: rule.ruleType,
-                    action: rule.action,
-                    repeatType: rule.repeatType,
-                    executeTime: rule.executeTime,
-                    settingKey: rule.settingKey,
-                    settingValue: rule.action === 'set' ? rule.settingValue : '',
-                    remark: rule.remark,
-                    isEnabled: !rule.isEnabled,
-                  }
-                : {
-                    ruleType: rule.ruleType,
-                    extension: rule.extension,
-                    action: rule.action,
-                    repeatType: rule.repeatType,
-                    executeTime: rule.executeTime,
-                    remark: rule.remark,
-                    isEnabled: !rule.isEnabled,
-                  },
+            attributes,
           },
         },
       })
@@ -552,13 +637,24 @@ export default class SchedulerPage extends ExtensionPage {
   }
 
   ruleName(rule: Rule, options: Record<string, string>): string {    if (rule.ruleType === 'setting') {
-      const keyLabel = app.translator.trans(`mattoid-plugin-scheduler.admin.setting-${rule.settingKey}`);
+      // 白名单之外的键（扩展设置）没有翻译，直接显示原始 key
+      const keyLabel = SETTING_TARGETS[rule.settingKey]
+        ? app.translator.trans(`mattoid-plugin-scheduler.admin.setting-${rule.settingKey}`)
+        : rule.settingKey;
       const actionLabel =
         rule.action === 'reset'
           ? app.translator.trans('mattoid-plugin-scheduler.admin.action-reset')
           : app.translator.trans('mattoid-plugin-scheduler.admin.action-set');
       const valuePreview = rule.action === 'set' && rule.settingValue ? ` = ${rule.settingValue.slice(0, 40)}` : '';
       return `[${keyLabel}] ${actionLabel}${valuePreview}`;
+    }
+    if (rule.ruleType === 'ext-setting') {
+      const actionLabel =
+        rule.action === 'reset'
+          ? app.translator.trans('mattoid-plugin-scheduler.admin.action-reset')
+          : app.translator.trans('mattoid-plugin-scheduler.admin.action-set');
+      const count = Object.keys(rule.settingsMap || {}).length;
+      return `${options[rule.extension] || rule.extension} / ${actionLabel} ×${count}`;
     }
     return options[rule.extension] || rule.extension;
   }
@@ -616,24 +712,28 @@ export default class SchedulerPage extends ExtensionPage {
                   options={{
                     extension: app.translator.trans('mattoid-plugin-scheduler.admin.rule-type-extension'),
                     setting: app.translator.trans('mattoid-plugin-scheduler.admin.rule-type-setting'),
+                    'ext-setting': app.translator.trans('mattoid-plugin-scheduler.admin.rule-type-ext-setting'),
                   }}
                   onchange={(value: string) => {
                     row.ruleType = value;
-                    row.action = value === 'setting' ? 'set' : 'enable';
+                    row.action = value === 'extension' ? 'enable' : 'set';
+                    row.text = '';
+                    this.openDropdown = null;
                   }}
                 />
 
-                {row.ruleType === 'extension' && (
+                {(row.ruleType === 'extension' || row.ruleType === 'ext-setting') && (
                   <div className="PluginSchedulerExtSelect">
                     <input
                       class="FormControl PluginSchedulerExtSearch"
-                      value={this.openDropdown === index ? row.text : options[row.extension] || row.extension}
+                      value={this.openDropdown === index ? row.text : this.rowExtensionOptions(row)[row.extension] || row.extension}
                       placeholder={app.translator.trans('mattoid-plugin-scheduler.admin.extension-search-placeholder')}
                       onclick={() => this.openExtDropdown(index)}
                       onfocus={() => this.openExtDropdown(index)}
                       oninput={(e: InputEvent) => {
                         row.text = (e.target as HTMLInputElement).value;
-                        const matched = Object.keys(options).find((id) => id === row.text || options[id] === row.text);
+                        const rowOptions = this.rowExtensionOptions(row);
+                        const matched = Object.keys(rowOptions).find((id) => id === row.text || rowOptions[id] === row.text);
                         row.extension = matched || row.text;
                       }}
                       onblur={() => this.closeExtDropdown(index)}
@@ -673,6 +773,19 @@ export default class SchedulerPage extends ExtensionPage {
                   </div>
                 )}
 
+                {(row.ruleType === 'extension' || row.ruleType === 'ext-setting') &&
+                  this.settingExtensionOptions()[row.extension] && (
+                    <Button
+                      className={'Button' + (this.configuringExt === row.extension ? ' Button--primary' : '')}
+                      icon="fas fa-cog"
+                      onclick={() => {
+                        this.configuringExt = this.configuringExt === row.extension ? null : row.extension;
+                      }}
+                    >
+                      {app.translator.trans('mattoid-plugin-scheduler.admin.configure-extension')}
+                    </Button>
+                  )}
+
                 {row.ruleType === 'setting' && (
                   <Select
                     value={row.settingKey}
@@ -683,6 +796,19 @@ export default class SchedulerPage extends ExtensionPage {
                     }}
                   />
                 )}
+
+                {row.ruleType === 'ext-setting' &&
+                  (this.settingExtensionOptions()[row.extension] ? (
+                    <ExtensionSettingsForm
+                      extensionId={row.extension}
+                      ondirty={(values: Record<string, string>, originals: Record<string, string | null>) => {
+                        row.settingValues = values;
+                        row.settingOriginals = originals;
+                      }}
+                    />
+                  ) : (
+                    <span className="PluginSchedulerHint">{app.translator.trans('mattoid-plugin-scheduler.admin.ext-setting-select-first')}</span>
+                  ))}
 
                 <Select
                   value={row.action}
@@ -750,6 +876,15 @@ export default class SchedulerPage extends ExtensionPage {
                 >
                   {app.translator.trans('mattoid-plugin-scheduler.admin.delete')}
                 </Button>
+
+                {this.configuringExt === row.extension && (
+                  <ExtensionSettingsEditor
+                    extensionId={row.extension}
+                    onclose={() => {
+                      this.configuringExt = null;
+                    }}
+                  />
+                )}
               </div>
             ))}
 

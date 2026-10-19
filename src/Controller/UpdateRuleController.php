@@ -28,7 +28,7 @@ class UpdateRuleController extends AbstractCreateController
         $repeatType = Arr::get($attributes, 'repeatType', 'once');
         $executeTime = Arr::get($attributes, 'executeTime', '');
 
-        if (!in_array($ruleType, ['extension', 'setting'], true) || !in_array($repeatType, ['once', 'daily', 'weekly', 'monthly', 'yearly'], true)) {
+        if (!in_array($ruleType, ['extension', 'setting', 'ext-setting'], true) || !in_array($repeatType, ['once', 'daily', 'weekly', 'monthly', 'yearly'], true)) {
             throw new ValidationException(['ruleType' => SaveRuleController::trans('invalid_rule_parameters')]);
         }
 
@@ -44,6 +44,8 @@ class UpdateRuleController extends AbstractCreateController
 
         if ($ruleType === 'setting') {
             SaveRuleController::applySettingAttributes($rule, $attributes);
+        } elseif ($ruleType === 'ext-setting') {
+            SaveRuleController::applyExtSettingAttributes($rule, $attributes);
         } else {
             $extension = trim((string) Arr::get($attributes, 'extension', ''));
             $action = Arr::get($attributes, 'action', '');
@@ -60,6 +62,8 @@ class UpdateRuleController extends AbstractCreateController
             $rule->action = $action;
             $rule->setting_key = null;
             $rule->setting_value = null;
+            $rule->settings_map = null;
+            $rule->settings_original = null;
         }
 
         // daily 规则执行时间可能改到当天更晚时刻，清掉当天防重标记；

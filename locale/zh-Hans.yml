@@ -29,6 +29,12 @@ mattoid-plugin-scheduler:
     confirm-delete: 确定删除该规则吗？
     rule-type-extension: 扩展
     rule-type-setting: 站点设置
+    rule-type-ext-setting: 扩展设置
+    ext-setting-select-first: 请先选择扩展，其注册的配置项会显示在这里
+    ext-setting-no-changes: 扩展设置规则至少需要修改一项配置
+    configure-extension: 配置该扩展
+    ext-settings-save: 保存设置
+    ext-settings-collapse: 收起
     action-set: 设置为
     action-reset: 恢复默认
     bool-on: 开启
@@ -61,6 +67,7 @@ mattoid-plugin-scheduler:
     invalid_rule_parameters: 规则参数无效
     invalid_execute_time: 执行时间无效，应为 Y-m-d H:i 格式
     invalid_action: 设置规则的操作无效，应为 set/reset
+    empty_settings_map: 扩展设置规则至少需要一项被修改的配置
     unsupported_setting_key: 不支持的设置项
     cannot_schedule_self: 不能对本插件自身创建定时规则
     unsupported_image_key: 不支持的图片设置项
