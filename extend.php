@@ -33,7 +33,10 @@ return [
     (new Extend\Console())
         ->command(ApplyScheduleRules::class)
         ->schedule(ApplyScheduleRules::class, function ($event) {
-            $event->everyMinute();
+            // withoutOverlapping：应用规则涉及扩展启停/资产编译等重操作，
+            // 执行超一分钟时不允许下一个 cron 进程重叠跑（core 已绑 CacheEventMutex）。
+            // 锁 TTL 显式给 30 分钟：进程异常死亡后最多停摆 30 分钟，而不是默认的 24 小时
+            $event->everyMinute()->withoutOverlapping(30);
         }),
 
     (new Extend\Settings())

@@ -68,7 +68,9 @@ mattoid-plugin-scheduler:
     invalid_execute_time: 执行时间无效，应为 Y-m-d H:i 格式
     invalid_action: 设置规则的操作无效，应为 set/reset
     empty_settings_map: 扩展设置规则至少需要一项被修改的配置
+    too_many_settings: 单条规则包含的设置项过多（最多 100 项）
     unsupported_setting_key: 不支持的设置项
+    invalid_settings_value: 设置值必须是标量
     cannot_schedule_self: 不能对本插件自身创建定时规则
     unsupported_image_key: 不支持的图片设置项
     invalid_upload: 上传文件无效

@@ -366,7 +366,7 @@ export default class SchedulerPage extends ExtensionPage {
         ...base,
         extension: row.extension,
         settingsMap: row.settingValues,
-        settingsOriginal: row.settingOriginals || {},
+        // 原始值由后端保存时从服务端现读，这里不再提交
       };
     }
 
@@ -398,30 +398,40 @@ export default class SchedulerPage extends ExtensionPage {
       }
 
       requests.push(
-        app.request({
-          method: row.editingRuleId ? 'PUT' : 'POST',
-          url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules' + (row.editingRuleId ? '/' + row.editingRuleId : ''),
-          body: {
-            data: {
-              attributes,
+        app
+          .request({
+            method: row.editingRuleId ? 'PUT' : 'POST',
+            url: app.forum.attribute('apiUrl') + '/plugin-scheduler/rules' + (row.editingRuleId ? '/' + row.editingRuleId : ''),
+            body: {
+              data: {
+                attributes,
+              },
             },
-          },
-        })
+          })
+          .then((response: any) => {
+            // 记录已创建规则的 id：部分行失败时用户修好重试，成功过的行走 PUT 幂等更新，
+            // 不会重复 POST 出重复规则
+            if (!row.editingRuleId && response && response.data && response.data.id) {
+              row.editingRuleId = parseInt(response.data.id, 10);
+            }
+            return true;
+          })
+          .catch(() => false)
       );
     }
 
     Promise.all(requests)
-      .then(() => {
-        this.draftRows = [];
+      .then((outcomes: boolean[]) => {
+        if (outcomes.every(Boolean)) {
+          this.draftRows = [];
+        } else {
+          // 失败的行保留在草稿里（已成功的行已有 editingRuleId，重试走 PUT）
+          app.alerts.show({ type: 'error' }, app.translator.trans('mattoid-plugin-scheduler.admin.save-failed'));
+        }
       })
       .then(() => {
         this.saving = false;
         this.loadRules();
-      })
-      .catch(() => {
-        // 保存失败（如 422 校验错误）要复位 saving，否则会永远卡在保存中
-        this.saving = false;
-        app.alerts.show({ type: 'error' }, app.translator.trans('mattoid-plugin-scheduler.admin.save-failed'));
         m.redraw();
       });
   }
@@ -478,7 +488,6 @@ export default class SchedulerPage extends ExtensionPage {
             repeatType: rule.repeatType,
             executeTime: rule.executeTime,
             settingsMap: rule.settingsMap,
-            settingsOriginal: rule.settingsOriginal,
             remark: rule.remark,
             isEnabled: !rule.isEnabled,
           }
@@ -575,18 +584,37 @@ export default class SchedulerPage extends ExtensionPage {
       m.redraw();
 
       const $input = $('<input type="file" accept="image/*">');
+
+      // 无论选中文件、取消选择（现代浏览器触发 cancel）还是上传结束，
+      // 都必须复位 uploadingImage 并移除临时 input，否则按钮永久卡死、DOM 泄漏
+      const reset = () => {
+        this.uploadingImage = false;
+        $input.remove();
+        m.redraw();
+      };
+
       $input
         .appendTo('body')
         .hide()
-        .trigger('click')
         .on('change', (e) => {
+          const file = $(e.target)[0].files?.[0];
+          if (!file) {
+            reset();
+            return;
+          }
+
           const body = new FormData();
-          body.append('file', $(e.target)[0].files[0]);
+          body.append('file', file);
 
           app
             .request({
               method: 'POST',
-              url: app.forum.attribute('apiUrl') + '/plugin-scheduler/upload-image?key=' + row.settingKey,
+              url:
+                app.forum.attribute('apiUrl') +
+                '/plugin-scheduler/upload-image?key=' +
+                row.settingKey +
+                // 草稿里被替换掉的旧图一并回收（后端会校验它没被规则引用、也不是当前在用的图）
+                (row.settingValue ? '&replace=' + encodeURIComponent(row.settingValue) : ''),
               serialize: (raw: any) => raw,
               body,
             })
@@ -596,11 +624,10 @@ export default class SchedulerPage extends ExtensionPage {
             .catch(() => {
               alert(app.translator.trans('mattoid-plugin-scheduler.admin.image-upload-failed'));
             })
-            .then(() => {
-              this.uploadingImage = false;
-              m.redraw();
-            });
-        });
+            .then(reset);
+        })
+        .on('cancel', reset)
+        .trigger('click');
     };
 
     return (
@@ -718,6 +745,7 @@ export default class SchedulerPage extends ExtensionPage {
                     row.ruleType = value;
                     row.action = value === 'extension' ? 'enable' : 'set';
                     row.text = '';
+                    this.configuringExt = null;
                     // 扩展设置不预置插件，避免未选择时直接落入排序第一的扩展
                     if (value === 'ext-setting') {
                       row.extension = '';
@@ -880,6 +908,8 @@ export default class SchedulerPage extends ExtensionPage {
                   className="Button Button--danger"
                   onclick={() => {
                     this.draftRows.splice(index, 1);
+                    // 被删除的行可能正展开着设置编辑器，一并收起避免串到别的行
+                    this.configuringExt = null;
                   }}
                 >
                   {app.translator.trans('mattoid-plugin-scheduler.admin.delete')}

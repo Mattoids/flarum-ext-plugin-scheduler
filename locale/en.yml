@@ -68,7 +68,9 @@ mattoid-plugin-scheduler:
     invalid_execute_time: Invalid execute time, expected Y-m-d H:i
     invalid_action: Invalid action for setting rule, expected set/reset
     empty_settings_map: An extension settings rule needs at least one modified setting
+    too_many_settings: Too many settings in one rule (max 100)
     unsupported_setting_key: Unsupported setting key
+    invalid_settings_value: Setting values must be scalar
     cannot_schedule_self: Cannot schedule the scheduler extension itself
     unsupported_image_key: Unsupported image setting key
     invalid_upload: Invalid upload

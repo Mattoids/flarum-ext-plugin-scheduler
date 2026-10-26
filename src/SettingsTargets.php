@@ -41,7 +41,8 @@ class SettingsTargets
 
     /**
      * 扩展设置键：形如「扩展ID.键名」（如 mattoid-store.goods-title），
-     * 扩展 ID 为小写字母/数字/连字符，键名允许点号。以此旁路放开白名单之外的键。
+     * 扩展 ID 为小写字母/数字/连字符，键名允许点号。仅供 ext-setting 规则
+     * 校验「键属于声明的扩展」使用，setting 规则不经过此判断。
      */
     public static function isExtensionKey($key)
     {

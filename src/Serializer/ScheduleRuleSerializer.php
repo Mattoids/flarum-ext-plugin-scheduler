@@ -28,6 +28,7 @@ class ScheduleRuleSerializer extends AbstractSerializer
             'settingsOriginal' => $data->settings_original,
             'remark' => $data->remark,
             'isEnabled' => (bool) $data->is_enabled,
+            'failureCount' => (int) $data->failure_count,
         ];
     }
 }

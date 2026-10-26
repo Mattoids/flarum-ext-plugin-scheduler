@@ -4,6 +4,7 @@ namespace Mattoid\PluginScheduler\Controller;
 
 use Flarum\Api\Controller\AbstractCreateController;
 use Flarum\Foundation\ValidationException;
+use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Support\Arr;
 use Mattoid\PluginScheduler\Command\ApplyScheduleRules;
 use Mattoid\PluginScheduler\Model\ScheduleRule;
@@ -38,6 +39,13 @@ class SaveRuleController extends AbstractCreateController
 
         return $time;
     }
+
+    /**
+     * 扩展名字段长度上限（对应 extension 列 varchar 191），超出抛 422 而不是 SQL 500；
+     * settingsMap 条目数上限，防超大映射拖慢保存/执行。
+     */
+    const MAX_EXTENSION_LENGTH = 190;
+    const MAX_SETTINGS_MAP = 100;
 
     public static function trans($key, $params = [])
     {
@@ -75,7 +83,7 @@ class SaveRuleController extends AbstractCreateController
             $extension = trim((string) Arr::get($attributes, 'extension', ''));
             $action = Arr::get($attributes, 'action', '');
 
-            if ($extension === '' || !in_array($action, ['enable', 'disable'], true)) {
+            if ($extension === '' || mb_strlen($extension) > self::MAX_EXTENSION_LENGTH || !in_array($action, ['enable', 'disable'], true)) {
                 throw new ValidationException(['extension' => self::trans('invalid_rule_parameters')]);
             }
 
@@ -101,7 +109,8 @@ class SaveRuleController extends AbstractCreateController
             throw new ValidationException(['action' => SaveRuleController::trans('invalid_action')]);
         }
 
-        if (!SettingsTargets::isValid($settingKey) && !SettingsTargets::isExtensionKey($settingKey)) {
+        // setting 类型只允许核心白名单内的键；扩展设置键一律走 ext-setting 规则
+        if (!SettingsTargets::isValid($settingKey)) {
             throw new ValidationException(['settingKey' => SaveRuleController::trans('unsupported_setting_key').': '.$settingKey]);
         }
 
@@ -109,6 +118,18 @@ class SaveRuleController extends AbstractCreateController
         $rule->action = $action;
         $rule->setting_key = $settingKey;
         $rule->setting_value = $action === 'set' ? (string) Arr::get($attributes, 'settingValue', '') : null;
+        // 规则从 ext-setting 类型切换过来时清掉残留映射，避免脏数据
+        $rule->settings_map = null;
+        $rule->settings_original = null;
+
+        // custom_less 保存前试编译校验，非法 LESS 当场 422，不等到执行期才炸前台
+        if ($settingKey === 'custom_less' && $action === 'set') {
+            try {
+                ApplyScheduleRules::validateCustomLess($rule->setting_value);
+            } catch (ValidationException $e) {
+                throw new ValidationException(['settingValue' => $e->getMessage()]);
+            }
+        }
     }
 
     /**
@@ -121,7 +142,7 @@ class SaveRuleController extends AbstractCreateController
         $extension = trim((string) Arr::get($attributes, 'extension', ''));
         $action = Arr::get($attributes, 'action', '');
 
-        if ($extension === '' || !in_array($action, ['set', 'reset'], true)) {
+        if ($extension === '' || mb_strlen($extension) > self::MAX_EXTENSION_LENGTH || !in_array($action, ['set', 'reset'], true)) {
             throw new ValidationException(['extension' => SaveRuleController::trans('invalid_rule_parameters')]);
         }
 
@@ -130,18 +151,32 @@ class SaveRuleController extends AbstractCreateController
         }
 
         $map = Arr::get($attributes, 'settingsMap', []);
-        $original = Arr::get($attributes, 'settingsOriginal', []);
 
         if (!is_array($map) || !$map) {
             throw new ValidationException(['settingsMap' => SaveRuleController::trans('empty_settings_map')]);
         }
 
-        // 键必须是「该扩展 ID.」前缀的扩展设置键
+        if (count($map) > self::MAX_SETTINGS_MAP) {
+            throw new ValidationException(['settingsMap' => SaveRuleController::trans('too_many_settings')]);
+        }
+
+        // 键必须是「该扩展 ID.」前缀的扩展设置键；值必须是标量（嵌套数组强转字符串会写坏设置）
         $prefix = ApplyScheduleRules::toExtensionId($extension).'.';
         foreach ($map as $key => $value) {
             if (!SettingsTargets::isExtensionKey($key) || strpos($key, $prefix) !== 0) {
                 throw new ValidationException(['settingsMap' => SaveRuleController::trans('unsupported_setting_key').': '.$key]);
             }
+            if (!is_scalar($value) && $value !== null) {
+                throw new ValidationException(['settingsMap' => SaveRuleController::trans('invalid_settings_value').': '.$key]);
+            }
+        }
+
+        // 原始值从服务端现读（不信任客户端提交的 settingsOriginal），
+        // 保证 reset 恢复的是保存规则时刻服务器上的真实值
+        $settings = resolve(SettingsRepositoryInterface::class);
+        $original = [];
+        foreach (array_keys($map) as $key) {
+            $original[$key] = $settings->get($key);
         }
 
         $rule->extension = $extension;
@@ -149,6 +184,6 @@ class SaveRuleController extends AbstractCreateController
         $rule->setting_key = null;
         $rule->setting_value = null;
         $rule->settings_map = $map;
-        $rule->settings_original = is_array($original) ? $original : [];
+        $rule->settings_original = $original;
     }
 }
